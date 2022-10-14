@@ -4,6 +4,7 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,7 +19,7 @@ public class ServerNode {
 
     private ExecutorService service;
     private ServerSocket serverSocket;
-    private List<Socket> sockets;
+    private List<Socket> sockets = new ArrayList<>();
 
     public ServerNode(int PORT, String IP_ADDRESS, String name, List<String> listOfDiscoveredPeers) {
         this.PORT = PORT;
@@ -33,10 +34,9 @@ public class ServerNode {
         service = Executors.newFixedThreadPool(50);
 
         try {
-
-            // TODO: fixe IP?
             serverSocket = new ServerSocket(PORT);
             service.execute(new ServerListenerThread(serverSocket, service, sockets));
+            System.out.println("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
         }
