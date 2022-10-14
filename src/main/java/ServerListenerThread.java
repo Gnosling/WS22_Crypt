@@ -3,6 +3,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import messages.HelloMessage;
+import messages.PeersMessage;
 
 import javax.xml.stream.FactoryConfigurationError;
 import java.io.*;
@@ -14,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 
 public class ServerListenerThread extends Thread {
 
+    private ServerNode serverNode;
     private ServerSocket serverSocket;
     private String name;
     private ExecutorService service;
@@ -21,7 +23,8 @@ public class ServerListenerThread extends Thread {
 
     private boolean wasGreeted = false;
 
-    public ServerListenerThread(ServerSocket serverSocket, ExecutorService service, List<Socket> sockets) {
+    public ServerListenerThread(ServerNode serverNode, ServerSocket serverSocket, ExecutorService service, List<Socket> sockets) {
+        this.serverNode = serverNode;
         this.serverSocket = serverSocket;
         this.service = service;
         this.sockets = sockets;
@@ -35,10 +38,8 @@ public class ServerListenerThread extends Thread {
             // wait for Client to connect
             socket = serverSocket.accept(); // throws only IOExc?
             sockets.add(socket);
-            service.execute(new ServerListenerThread(serverSocket, service, sockets));
+            service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets));
             System.out.println("Connected to new client: " + socket.getInetAddress());
-
-            // TODO: works so for putty "putty -raw localhost 18018" , but for curl?
 
             // prepare the input reader for the socket
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -78,6 +79,7 @@ public class ServerListenerThread extends Thread {
                 switch (type) {
 
                     case "hello":
+                        // { "type" : "hello", "version" : "0.8.0" }
                         System.out.println("[Case: HELLO]");
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
@@ -88,6 +90,21 @@ public class ServerListenerThread extends Thread {
                         HelloMessage responseHello = new HelloMessage("hello", "0.8.0", "Kerma−Core Client 0.8");
                         response = objectMapper.writeValueAsString(responseHello);
                         break;
+
+                    case "getpeers":
+                        // { "type" : "getpeers" }
+                        System.out.println("[Case: GETPEERS]");
+                        if (!wasGreeted) {
+                            System.out.println("was not greeted first!");
+                            badRequest = true;
+                            break;
+                        }
+                        // There is no need to create a json-object for the request
+                        // peers are list stored in servernode
+                        PeersMessage responsePeers = new PeersMessage("peers", serverNode.getListOfDiscoveredPeers());
+                        response = objectMapper.writeValueAsString(responsePeers);
+                        break;
+
 
                     default:
                         badRequest = true;

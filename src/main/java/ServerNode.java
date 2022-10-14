@@ -35,7 +35,8 @@ public class ServerNode {
 
         try {
             serverSocket = new ServerSocket(PORT);
-            service.execute(new ServerListenerThread(serverSocket, service, sockets));
+            listOfDiscoveredPeers.add(serverSocket.getInetAddress().getHostAddress() + ":" + PORT);
+            service.execute(new ServerListenerThread(this, serverSocket, service, sockets));
             System.out.println("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
@@ -56,6 +57,14 @@ public class ServerNode {
                 } else if (("info").equals(cmd)) {
                     System.out.println(" --- INFO --- " +
                             "\n" + serverSocket.getInetAddress());
+
+                } else if (("peers").equals(cmd)) {
+                    StringBuilder peers = new StringBuilder();
+                    for (String peer : listOfDiscoveredPeers) {
+                        peers.append(peer + "\n");
+                    }
+                    System.out.println(" --- Peers --- \n" + peers);
+
                 } else {
                     System.out.println("unknown command: " + cmd);
                 }
