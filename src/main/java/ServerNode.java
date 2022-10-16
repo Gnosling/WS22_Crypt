@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.LinkOption;
@@ -39,7 +40,8 @@ public class ServerNode {
 
         try {
             serverSocket = new ServerSocket(PORT);
-            listOfDiscoveredPeers.add(serverSocket.getInetAddress().getHostAddress() + ":" + PORT);
+            // TODO: nicht hier hinzufügen!
+            listOfDiscoveredPeers.add(InetAddress.getLocalHost().getHostAddress() + ":" + PORT);
             service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
             log.info("launched");
         } catch (IOException e) {
@@ -59,8 +61,8 @@ public class ServerNode {
                     break;
 
                 } else if (("info").equals(cmd)) {
-                    log.info(" --- INFO --- " +
-                            "\n" + serverSocket.getInetAddress());
+                    log.info(" --- INFO --- "
+                        + "\n Server-Address: " + InetAddress.getLocalHost().getHostAddress());
 
                 } else if (("peers").equals(cmd)) {
                     StringBuilder peers = new StringBuilder();

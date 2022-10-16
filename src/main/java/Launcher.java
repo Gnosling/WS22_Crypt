@@ -9,7 +9,7 @@ public class Launcher {
         String IP_ADDRESS = "";
         String name = "cooler name eye";
         List<String> listOfDiscoveredPeers = new ArrayList<>();
-        listOfDiscoveredPeers.add("localhost:18018");
+        listOfDiscoveredPeers.add("128.130.122.101:18018"); // main-node
 
         Logger log = Logger.getLogger("logger");
 
