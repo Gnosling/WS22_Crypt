@@ -10,8 +10,10 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeoutException;
 
 public class ServerListenerThread extends Thread {
 
@@ -39,6 +41,7 @@ public class ServerListenerThread extends Thread {
             socket = serverSocket.accept(); // throws only IOExc?
             sockets.add(socket);
             service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets));
+            socket.setSoTimeout(1000*20);
             System.out.println("Connected to new client: " + socket.getInetAddress());
 
             // prepare the input reader for the socket
@@ -79,7 +82,7 @@ public class ServerListenerThread extends Thread {
                 switch (type) {
 
                     case "hello":
-                        // { "type" : "hello", "version" : "0.8.0" }
+                        // { "type" : "hello", "version" : "0.8.0", "agent" : "Kerma−Core Client 0.8" }
                         System.out.println("[Case: HELLO]");
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
@@ -99,7 +102,8 @@ public class ServerListenerThread extends Thread {
                             badRequest = true;
                             break;
                         }
-                        // There is no need to create a json-object for the request
+                        // There is no need to create a json-object for the request --> DOCH!! TODO
+                        
                         // peers are list stored in servernode
                         PeersMessage responsePeers = new PeersMessage("peers", serverNode.getListOfDiscoveredPeers());
                         response = objectMapper.writeValueAsString(responsePeers);
@@ -137,7 +141,13 @@ public class ServerListenerThread extends Thread {
             // almost all SocketException cases indicate that the socket was closed
             System.err.println("socket was closed");
 
+        } catch (SocketTimeoutException e) {
+            // when the socket is closed, the I/O methods of the Socket will throw a SocketException
+            // almost all SocketException cases indicate that the socket was closed
+            System.err.println("socket did not respond in time");
+
         } catch (IOException e) {
+            System.err.println("JSON Exception!");
             throw new UncheckedIOException(e);
 
         } finally {
