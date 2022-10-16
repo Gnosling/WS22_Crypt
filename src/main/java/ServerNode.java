@@ -4,11 +4,13 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 public class ServerNode {
 
@@ -16,28 +18,30 @@ public class ServerNode {
     private String IP_ADDRESS;
     private String name;
     private List<String> listOfDiscoveredPeers;
+    private Logger log;
 
     private ExecutorService service;
     private ServerSocket serverSocket;
     private List<Socket> sockets = new ArrayList<>();
 
-    public ServerNode(int PORT, String IP_ADDRESS, String name, List<String> listOfDiscoveredPeers) {
+    public ServerNode(int PORT, String IP_ADDRESS, String name, List<String> listOfDiscoveredPeers, Logger log) {
         this.PORT = PORT;
         this.IP_ADDRESS = IP_ADDRESS;
         this.name = name;
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
+        this.log = log;
     }
 
     public void launch() {
-        System.out.println("launching ...");
+        log.info("launching ...");
         // TODO: sich das nochmals ansehen!
         service = Executors.newFixedThreadPool(50);
 
         try {
             serverSocket = new ServerSocket(PORT);
             listOfDiscoveredPeers.add(serverSocket.getInetAddress().getHostAddress() + ":" + PORT);
-            service.execute(new ServerListenerThread(this, serverSocket, service, sockets));
-            System.out.println("launched");
+            service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
+            log.info("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
         }
@@ -55,7 +59,7 @@ public class ServerNode {
                     break;
 
                 } else if (("info").equals(cmd)) {
-                    System.out.println(" --- INFO --- " +
+                    log.info(" --- INFO --- " +
                             "\n" + serverSocket.getInetAddress());
 
                 } else if (("peers").equals(cmd)) {
@@ -63,10 +67,10 @@ public class ServerNode {
                     for (String peer : listOfDiscoveredPeers) {
                         peers.append(peer + "\n");
                     }
-                    System.out.println(" --- Peers --- \n" + peers);
+                    log.info(" --- Peers --- \n" + peers);
 
                 } else {
-                    System.out.println("unknown command: " + cmd);
+                    log.info("unknown command: " + cmd);
                 }
             }
         } catch (IOException e) {
@@ -76,14 +80,14 @@ public class ServerNode {
     }
 
     public void shutdown() {
-        System.out.println("shutting down ...");
+        log.info("shutting down ...");
 
         if (serverSocket != null) {
             try {
                 serverSocket.close();
-                System.out.println("serversocket was closed");
+                log.info("serversocket was closed");
             } catch (IOException e) {
-                System.err.println("Error while closing server socket: " + e.getMessage());
+                log.warning("Error while closing server socket: " + e.getMessage());
             }
         }
 
@@ -92,7 +96,7 @@ public class ServerNode {
                 try {
                     socket.close();
                 } catch (IOException e) {
-                    System.err.println("Error while closing socket: " + e.getMessage());
+                    log.severe("Error while closing socket: " + e.getMessage());
                 }
             }
         }
@@ -105,7 +109,7 @@ public class ServerNode {
         } catch (InterruptedException e) {
             service.shutdownNow();
         }
-        System.out.println("was shut down!");
+        log.info("was shut down!");
     }
 
     public String getName() {

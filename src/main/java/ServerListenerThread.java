@@ -14,6 +14,7 @@ import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
 
 public class ServerListenerThread extends Thread {
 
@@ -22,14 +23,16 @@ public class ServerListenerThread extends Thread {
     private String name;
     private ExecutorService service;
     private List<Socket> sockets;
+    private Logger log;
 
     private boolean wasGreeted = false;
 
-    public ServerListenerThread(ServerNode serverNode, ServerSocket serverSocket, ExecutorService service, List<Socket> sockets) {
+    public ServerListenerThread(ServerNode serverNode, ServerSocket serverSocket, ExecutorService service, List<Socket> sockets, Logger log) {
         this.serverNode = serverNode;
         this.serverSocket = serverSocket;
         this.service = service;
         this.sockets = sockets;
+        this.log = log;
     }
 
     public void run() {
@@ -40,9 +43,9 @@ public class ServerListenerThread extends Thread {
             // wait for Client to connect
             socket = serverSocket.accept(); // throws only IOExc?
             sockets.add(socket);
-            service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets));
+            service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets, log));
             socket.setSoTimeout(1000*20);
-            System.out.println("Connected to new client: " + socket.getInetAddress());
+            log.info("Connected to new client: " + socket.getInetAddress());
 
             // prepare the input reader for the socket
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -59,10 +62,11 @@ public class ServerListenerThread extends Thread {
                     break;
                 }
 
-                System.out.println("[received]: " + request);
+                log.info("[received]: " + request);
                 boolean isJson = Util.isJson(request);
 
                 if (!isJson || request == null || request.trim().equals("")) {
+                    log.warning("invalid protocol");
                     break;
                 }
 
@@ -72,6 +76,7 @@ public class ServerListenerThread extends Thread {
                 JsonNode typeNode = jsonNode.findValue("type");
 
                 if (typeNode == null) {
+                    log.warning("invalid protocol");
                     break;
                 }
 
@@ -83,7 +88,7 @@ public class ServerListenerThread extends Thread {
 
                     case "hello":
                         // { "type" : "hello", "version" : "0.8.0", "agent" : "Kerma−Core Client 0.8" }
-                        System.out.println("[Case: HELLO]");
+                        log.info("[Case: HELLO]");
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
                             badRequest = true;
@@ -96,9 +101,9 @@ public class ServerListenerThread extends Thread {
 
                     case "getpeers":
                         // { "type" : "getpeers" }
-                        System.out.println("[Case: GETPEERS]");
+                        log.info("[Case: GETPEERS]");
                         if (!wasGreeted) {
-                            System.out.println("was not greeted first!");
+                            log.warning("was not greeted first!");
                             badRequest = true;
                             break;
                         }
@@ -117,20 +122,20 @@ public class ServerListenerThread extends Thread {
                 }
 
                 if (badRequest) {
-                    System.out.println("BAD REQUEST!");
+                    log.warning("BAD REQUEST!");
                     break;
                 }
 
 
                 writer.println(response);
                 writer.flush();
-                System.out.println("[responded]: " + response);
+                log.info("[responded]: " + response);
             }
 
             if (socket != null && !socket.isClosed()) {
                 try {
                     socket.close();
-                    System.out.println("socket was closed");
+                    log.info("socket was closed");
                 } catch (IOException e) {
                     // Ignored because we cannot handle it
                 }
@@ -139,22 +144,22 @@ public class ServerListenerThread extends Thread {
         } catch (SocketException e) {
             // when the socket is closed, the I/O methods of the Socket will throw a SocketException
             // almost all SocketException cases indicate that the socket was closed
-            System.err.println("socket was closed");
+            log.warning("socket was closed");
 
         } catch (SocketTimeoutException e) {
             // when the socket is closed, the I/O methods of the Socket will throw a SocketException
             // almost all SocketException cases indicate that the socket was closed
-            System.err.println("socket did not respond in time");
+            log.warning("socket did not respond in time");
 
         } catch (IOException e) {
-            System.err.println("JSON Exception!");
+            log.warning("JSON Exception!");
             throw new UncheckedIOException(e);
 
         } finally {
             if (socket != null && !socket.isClosed()) {
                 try {
                     socket.close();
-                    System.out.println("socket was closed");
+                    log.warning("socket was closed");
                 } catch (IOException e) {
                     // Ignored because we cannot handle it
                 }

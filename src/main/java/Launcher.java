@@ -11,9 +11,10 @@ public class Launcher {
         List<String> listOfDiscoveredPeers = new ArrayList<>();
         listOfDiscoveredPeers.add("localhost:18018");
 
-        // TODO: logger
+        Logger log = Logger.getLogger("logger");
 
-        ServerNode serverNode = new ServerNode(PORT, IP_ADDRESS, name, listOfDiscoveredPeers);
+        ServerNode serverNode = new ServerNode(PORT, IP_ADDRESS, name, listOfDiscoveredPeers, log);
+        log.info("Launching serverSocket of name: " + name + " and of port: " + PORT);
         serverNode.launch();
     }
 }
