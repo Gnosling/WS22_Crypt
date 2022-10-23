@@ -2,6 +2,8 @@ import Util.Util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import messages.ErrorMessage;
+import messages.GetPeersMessage;
 import messages.HelloMessage;
 import messages.PeersMessage;
 
@@ -11,10 +13,13 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
+
+import static Util.Util.*;
 
 public class ServerListenerThread extends Thread {
 
@@ -44,7 +49,7 @@ public class ServerListenerThread extends Thread {
             socket = serverSocket.accept(); // throws only IOExc?
             sockets.add(socket);
             service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets, log));
-            socket.setSoTimeout(1000*20);
+            socket.setSoTimeout(1000*90); // terminate after 90s
             log.info("Connected to new client: " + socket.getInetAddress());
 
             // prepare the input reader for the socket
@@ -54,78 +59,145 @@ public class ServerListenerThread extends Thread {
 
             String request = "";
             String response = "";
+            String typeFromSequentialRequests = "";
+            ObjectMapper objectMapper = new ObjectMapper();
 
+            // First send a hello
+            HelloMessage firstHello = new HelloMessage(hello, "0.8.0", "Kerma−Core Client 0.8");
+            response = objectMapper.writeValueAsString(firstHello);
+            writer.println(response);
+            writer.flush();
+            log.info("[first-greeted]: " + response);
+
+            // Second send getpeers
+            GetPeersMessage firstGetPeers = new GetPeersMessage(getpeers);
+            response = objectMapper.writeValueAsString(firstGetPeers);
+            writer.println(response);
+            writer.flush();
+            log.info("[first-asked-for-peers]: " + response);
+
+            response = "";
 
             // read client requests
             while (!Thread.currentThread().isInterrupted() && (request = reader.readLine()) != null) {
+
                 if (Thread.currentThread().isInterrupted()) {
                     break;
                 }
 
                 log.info("[received]: " + request);
-                boolean isJson = Util.isJson(request);
 
+                // verifies json
+                boolean isJson = Util.isJson(request);
                 if (!isJson || request == null || request.trim().equals("")) {
-                    log.warning("invalid protocol");
+                    response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
+                    writer.println(response);
+                    writer.flush();
+                    log.warning("Did not receive a valid json-message!");
                     break;
                 }
 
                 // retrieve json
-                ObjectMapper objectMapper = new ObjectMapper();
                 JsonNode jsonNode = objectMapper.readTree(request);
                 JsonNode typeNode = jsonNode.findValue("type");
 
                 if (typeNode == null) {
-                    log.warning("invalid protocol");
+                    response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
+                    writer.println(response);
+                    writer.flush();
+                    log.warning("Unsupported message type received!");
                     break;
                 }
 
                 // retrieve type of the json-msg
-                String type = typeNode.textValue();
+                String typeFromOneRequest = typeNode.textValue();
                 boolean badRequest = false;
+                boolean continueWithoutResponse = false;
 
-                switch (type) {
+                switch (typeFromOneRequest) {
 
-                    case "hello":
+                    case hello:
                         // { "type" : "hello", "version" : "0.8.0", "agent" : "Kerma−Core Client 0.8" }
                         log.info("[Case: HELLO]");
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
                             badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Hello-Message failed verification!"));
+                            log.warning("Hello-Message failed verification!");
                             break;
                         }
                         wasGreeted = true;
-                        HelloMessage responseHello = new HelloMessage("hello", "0.8.0", "Kerma−Core Client 0.8");
+                        HelloMessage responseHello = new HelloMessage(hello, "0.8.0", "Kerma−Core Client 0.8");
                         response = objectMapper.writeValueAsString(responseHello);
                         break;
 
-                    case "getpeers":
+                    case getpeers:
                         // { "type" : "getpeers" }
                         log.info("[Case: GETPEERS]");
                         if (!wasGreeted) {
-                            log.warning("was not greeted first!");
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
                             badRequest = true;
                             break;
                         }
-                        // There is no need to create a json-object for the request --> DOCH!! TODO
+                        // There is no need to create a json-object for the request --> DOCH!! TODO: doch?
+                        GetPeersMessage receivedGetPeers = objectMapper.readValue(request, GetPeersMessage.class);
                         
-                        // peers are list stored in servernode
-                        PeersMessage responsePeers = new PeersMessage("peers", serverNode.getListOfDiscoveredPeers());
+                        // peers are stored in servernode
+                        List<String> knownPeers = new ArrayList(serverNode.getListOfDiscoveredPeers());
+                        knownPeers.add(serverNode.getServerAddress()); // add own address into new list
+                        PeersMessage responsePeers = new PeersMessage(peers, knownPeers);
                         response = objectMapper.writeValueAsString(responsePeers);
                         break;
 
+                    case peers:
+                        // {"type" : "peers", "peers" : ["****.com:18018" ,"138.197.191.170:18018", "[fe80::f03c:91ff:fe2c:5a79]:18018"] }
+                        log.info("[Case: PEERS]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        PeersMessage receivedPeers = objectMapper.readValue(request, PeersMessage.class);
+                        // TODO: verification needed?
+//                        if (!receivedPeers.verifyPeersMessage()) {
+//                            badRequest = true;
+//                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Peers-Message failed verification!"));
+//                            log.warning("Peers-Message failed verification!");
+//                            break;
+//                        }
+                        boolean peersWereUpdated = serverNode.updateListOfDiscoveredPeers(receivedPeers.getPeers());
+                        log.info("Peers update? : " + peersWereUpdated);
+                        continueWithoutResponse = true;
+                        break;
+
+                    case error:
+                        // { "type" : "error" , "error" : "some error" }
+                        log.warning("[Case: ERROR]");
+                        response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected error received: " + request));
+                        badRequest = true;
+                        break;
 
                     default:
                         badRequest = true;
                         break;
-
                 }
 
                 if (badRequest) {
                     log.warning("BAD REQUEST!");
+                    if (response == null || !response.contains(error)) {
+                        response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
+                    }
+                    writer.println(response);
+                    writer.flush();
                     break;
                 }
 
+                if (continueWithoutResponse) {
+                    log.info("continuing without response");
+                    continue;
+                }
 
                 writer.println(response);
                 writer.flush();

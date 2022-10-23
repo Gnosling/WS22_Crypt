@@ -24,6 +24,7 @@ public class ServerNode {
     private ExecutorService service;
     private ServerSocket serverSocket;
     private List<Socket> sockets = new ArrayList<>();
+    private String serverAddress;
 
     public ServerNode(int PORT, String IP_ADDRESS, String name, List<String> listOfDiscoveredPeers, Logger log) {
         this.PORT = PORT;
@@ -40,8 +41,8 @@ public class ServerNode {
 
         try {
             serverSocket = new ServerSocket(PORT);
-            // TODO: nicht hier hinzufügen!
-            listOfDiscoveredPeers.add(InetAddress.getLocalHost().getHostAddress() + ":" + PORT);
+            this.serverAddress = IP_ADDRESS + ":" + PORT;
+
             service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
             log.info("launched");
         } catch (IOException e) {
@@ -128,5 +129,37 @@ public class ServerNode {
 
     public void setListOfDiscoveredPeers(List<String> listOfDiscoveredPeers) {
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
+    }
+
+    public boolean updateListOfDiscoveredPeers(List<String> receivedPeers) {
+
+        boolean wasUpdated = false;
+        for (String peer : receivedPeers) {
+            if (peer.equals(serverAddress)) {
+                continue;
+            }
+            if (!listOfDiscoveredPeers.contains(peer)) {
+                listOfDiscoveredPeers.add(peer);
+                wasUpdated = true;
+            }
+        }
+
+        return wasUpdated;
+    }
+
+    public ExecutorService getService() {
+        return service;
+    }
+
+    public ServerSocket getServerSocket() {
+        return serverSocket;
+    }
+
+    public List<Socket> getSockets() {
+        return sockets;
+    }
+
+    public String getServerAddress() {
+        return serverAddress;
     }
 }

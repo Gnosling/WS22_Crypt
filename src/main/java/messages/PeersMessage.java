@@ -14,6 +14,7 @@ public class PeersMessage {
         this.peers = peers;
     }
 
+    // TODO: not sure if this method is useful / needed?
     public boolean verifyPeersMessage() {
         boolean mandatoryExists = type != null && peers != null;
         if (!mandatoryExists) {
