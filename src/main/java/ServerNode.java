@@ -1,3 +1,5 @@
+import Util.Util;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -5,7 +7,6 @@ import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -18,6 +19,7 @@ public class ServerNode {
     private int PORT;
     private String IP_ADDRESS;
     private String name;
+    private String versionOfNode;
     private List<String> listOfDiscoveredPeers;
     private Logger log;
 
@@ -26,10 +28,11 @@ public class ServerNode {
     private List<Socket> sockets = new ArrayList<>();
     private String serverAddress;
 
-    public ServerNode(int PORT, String IP_ADDRESS, String name, List<String> listOfDiscoveredPeers, Logger log) {
+    public ServerNode(int PORT, String IP_ADDRESS, String name, String versionOfNode, List<String> listOfDiscoveredPeers, Logger log) {
         this.PORT = PORT;
         this.IP_ADDRESS = IP_ADDRESS;
         this.name = name;
+        this.versionOfNode = versionOfNode;
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
         this.log = log;
     }
@@ -119,9 +122,7 @@ public class ServerNode {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public String getVersionOfNode() { return versionOfNode; }
 
     public List<String> getListOfDiscoveredPeers() {
         return listOfDiscoveredPeers;
@@ -134,14 +135,21 @@ public class ServerNode {
     public boolean updateListOfDiscoveredPeers(List<String> receivedPeers) {
 
         boolean wasUpdated = false;
+        List<String> knownPeers = Util.readPeersOfPersistentFile(Launcher.fileNameOfStoredPeers);
+
         for (String peer : receivedPeers) {
             if (peer.equals(serverAddress)) {
                 continue;
             }
-            if (!listOfDiscoveredPeers.contains(peer)) {
-                listOfDiscoveredPeers.add(peer);
+            if (!knownPeers.contains(peer)) {
+                knownPeers.add(peer);
                 wasUpdated = true;
             }
+        }
+
+        if (wasUpdated) {
+            listOfDiscoveredPeers = knownPeers;
+            Util.storePeersOnPersistentFile(knownPeers, Launcher.fileNameOfStoredPeers);
         }
 
         return wasUpdated;

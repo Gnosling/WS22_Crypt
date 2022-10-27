@@ -1,13 +1,11 @@
 import Util.Util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import messages.ErrorMessage;
 import messages.GetPeersMessage;
 import messages.HelloMessage;
 import messages.PeersMessage;
 
-import javax.xml.stream.FactoryConfigurationError;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -16,7 +14,6 @@ import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 
 import static Util.Util.*;
@@ -25,7 +22,6 @@ public class ServerListenerThread extends Thread {
 
     private ServerNode serverNode;
     private ServerSocket serverSocket;
-    private String name;
     private ExecutorService service;
     private List<Socket> sockets;
     private Logger log;
@@ -63,7 +59,8 @@ public class ServerListenerThread extends Thread {
             ObjectMapper objectMapper = new ObjectMapper();
 
             // First send a hello
-            HelloMessage firstHello = new HelloMessage(hello, "0.8.0", "Kerma−Core Client 0.8");
+            // TODO: agent = name of node?
+            HelloMessage firstHello = new HelloMessage(hello, "0.8.0", serverNode.getName() + " " + serverNode.getVersionOfNode());
             response = objectMapper.writeValueAsString(firstHello);
             writer.println(response);
             writer.flush();
@@ -87,7 +84,9 @@ public class ServerListenerThread extends Thread {
 
                 log.info("[received]: " + request);
 
-                // verifies json
+                request = request.trim();
+
+                // verify json
                 boolean isJson = Util.isJson(request);
                 if (!isJson || request == null || request.trim().equals("")) {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
@@ -96,6 +95,85 @@ public class ServerListenerThread extends Thread {
                     log.warning("Did not receive a valid json-message!");
                     break;
                 }
+
+//                if (!isJson) {
+//                    // check whether no json or split message
+//                    String requestCopy = request;
+//                    String[] keys = requestCopy.split("\"");
+//
+//                    if(keys.length == 0 || !keys[0].trim().startsWith("{")) {
+//                        // no valid json
+//                        response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
+//                        writer.println(response);
+//                        writer.flush();
+//                        log.warning("Did not receive a valid json-message!");
+//                        break;
+//                    }
+//
+//                    for (int i = 0; i < keys.length; i++) {
+//                        // only
+//
+//                    }
+//
+//
+//                    String continuedRequest = "";
+//                    if(requestCopy.equals("{") || "{\"type\"".startsWith(requestCopy)) {
+//                        // fetch more?
+//                        LocalDateTime maxTime = LocalDateTime.now().plus(350, ChronoUnit.MILLIS);
+//                        while(!Thread.currentThread().isInterrupted()
+//                                && LocalDateTime.now().isBefore(maxTime)
+//                                && (continuedRequest = reader.readLine()) != null) {
+//
+//                            requestCopy += continuedRequest;
+//
+//                            if(isJson(requestCopy)) {
+//                                request = requestCopy;
+//                                break;
+//                            }
+
+
+
+//                            if(requestCopy.startsWith("{\"type\"")) {
+//                                String temp = requestCopy.substring(7).trim();
+//                                if(temp.equals("")) {
+//                                    continue;
+//                                }
+//                                if(!temp.startsWith(":")) {
+//                                    // error
+//                                }
+//                                temp = temp.substring(1).trim();
+//                                if(hello.startsWith(temp)
+//                                        || getpeers.startsWith(temp)
+//                                        || peers.startsWith(temp)
+//                                        || error.startsWith(temp)) {
+//                                    continue;
+//                                    // TODO: aber was wenn es gleich ist???
+//                                    // TODO: request hat aber kein "\n" oder??
+//                                    // TODO: einzel typen behanden und \" berücksichtigen
+//                                    // TODO: order is variable?
+//                                }
+//                            }
+                            // else-branch??
+
+
+//                            maxTime = LocalDateTime.now().plus(350, ChronoUnit.MILLIS);
+//                        }
+//                    }
+
+
+//                    String[] openingBracket = request.split("\\{");
+//                    if (openingBracket.length < 2 || openingBracket[0].trim() != "") {
+//                        // no valid json
+//                        response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
+//                        writer.println(response);
+//                        writer.flush();
+//                        log.warning("Did not receive a valid json-message!");
+//                        break;
+//                    }
+//                    String restResponse = String.join("", openingBracket);
+//                    String[] quotationMarks = restResponse.split("\"");
+                    // TODO: some trimming??? before first bracket check??
+//                }
 
                 // retrieve json
                 JsonNode jsonNode = objectMapper.readTree(request);
@@ -110,14 +188,15 @@ public class ServerListenerThread extends Thread {
                 }
 
                 // retrieve type of the json-msg
-                String typeFromOneRequest = typeNode.textValue();
+                String type = typeNode.textValue();
                 boolean badRequest = false;
                 boolean continueWithoutResponse = false;
 
-                switch (typeFromOneRequest) {
+                switch (type) {
 
                     case hello:
                         // { "type" : "hello", "version" : "0.8.0", "agent" : "Kerma−Core Client 0.8" }
+                        // { "version" : "0.8.0", "type" : "hello", "agent" : "Kerma−Core Client 0.8" }
                         log.info("[Case: HELLO]");
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
@@ -127,7 +206,7 @@ public class ServerListenerThread extends Thread {
                             break;
                         }
                         wasGreeted = true;
-                        HelloMessage responseHello = new HelloMessage(hello, "0.8.0", "Kerma−Core Client 0.8");
+                        HelloMessage responseHello = new HelloMessage(hello, "0.8.0", serverNode.getName() + " " + serverNode.getVersionOfNode());
                         response = objectMapper.writeValueAsString(responseHello);
                         break;
 
@@ -216,7 +295,7 @@ public class ServerListenerThread extends Thread {
         } catch (SocketException e) {
             // when the socket is closed, the I/O methods of the Socket will throw a SocketException
             // almost all SocketException cases indicate that the socket was closed
-            log.warning("socket was closed");
+            log.warning("socket was closed ba client");
 
         } catch (SocketTimeoutException e) {
             // when the socket is closed, the I/O methods of the Socket will throw a SocketException
@@ -231,7 +310,7 @@ public class ServerListenerThread extends Thread {
             if (socket != null && !socket.isClosed()) {
                 try {
                     socket.close();
-                    log.warning("socket was closed");
+                    log.warning("socket was closed by server");
                 } catch (IOException e) {
                     // Ignored because we cannot handle it
                 }

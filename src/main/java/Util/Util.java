@@ -2,9 +2,11 @@ package Util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Util {
 
@@ -33,5 +35,38 @@ public class Util {
             return false;
         }
         return true;
+    }
+
+    public static List<String> readPeersOfPersistentFile(String fileName) {
+        BufferedReader reader = null;
+        List<String> peers = new ArrayList<>();
+        try {
+            reader = new BufferedReader(new FileReader(fileName));
+            String peer;
+            while ((peer = reader.readLine()) != null) {
+                if(!peer.equals("")) {
+                    peers.add(peer);
+                }
+            }
+            reader.close();
+            return peers;
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    public static boolean storePeersOnPersistentFile(List<String> peers, String fileName) {
+        BufferedWriter writer = null;
+        try {
+            writer = new BufferedWriter(new FileWriter(fileName));
+            for (String peer : peers) {
+                writer.write(peer + "\n");
+            }
+            writer.close();
+            return true;
+
+        } catch (IOException exception) {
+            return false;
+        }
     }
 }
