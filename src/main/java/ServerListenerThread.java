@@ -96,85 +96,6 @@ public class ServerListenerThread extends Thread {
                     break;
                 }
 
-//                if (!isJson) {
-//                    // check whether no json or split message
-//                    String requestCopy = request;
-//                    String[] keys = requestCopy.split("\"");
-//
-//                    if(keys.length == 0 || !keys[0].trim().startsWith("{")) {
-//                        // no valid json
-//                        response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
-//                        writer.println(response);
-//                        writer.flush();
-//                        log.warning("Did not receive a valid json-message!");
-//                        break;
-//                    }
-//
-//                    for (int i = 0; i < keys.length; i++) {
-//                        // only
-//
-//                    }
-//
-//
-//                    String continuedRequest = "";
-//                    if(requestCopy.equals("{") || "{\"type\"".startsWith(requestCopy)) {
-//                        // fetch more?
-//                        LocalDateTime maxTime = LocalDateTime.now().plus(350, ChronoUnit.MILLIS);
-//                        while(!Thread.currentThread().isInterrupted()
-//                                && LocalDateTime.now().isBefore(maxTime)
-//                                && (continuedRequest = reader.readLine()) != null) {
-//
-//                            requestCopy += continuedRequest;
-//
-//                            if(isJson(requestCopy)) {
-//                                request = requestCopy;
-//                                break;
-//                            }
-
-
-
-//                            if(requestCopy.startsWith("{\"type\"")) {
-//                                String temp = requestCopy.substring(7).trim();
-//                                if(temp.equals("")) {
-//                                    continue;
-//                                }
-//                                if(!temp.startsWith(":")) {
-//                                    // error
-//                                }
-//                                temp = temp.substring(1).trim();
-//                                if(hello.startsWith(temp)
-//                                        || getpeers.startsWith(temp)
-//                                        || peers.startsWith(temp)
-//                                        || error.startsWith(temp)) {
-//                                    continue;
-//                                    // TODO: aber was wenn es gleich ist???
-//                                    // TODO: request hat aber kein "\n" oder??
-//                                    // TODO: einzel typen behanden und \" berücksichtigen
-//                                    // TODO: order is variable?
-//                                }
-//                            }
-                            // else-branch??
-
-
-//                            maxTime = LocalDateTime.now().plus(350, ChronoUnit.MILLIS);
-//                        }
-//                    }
-
-
-//                    String[] openingBracket = request.split("\\{");
-//                    if (openingBracket.length < 2 || openingBracket[0].trim() != "") {
-//                        // no valid json
-//                        response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
-//                        writer.println(response);
-//                        writer.flush();
-//                        log.warning("Did not receive a valid json-message!");
-//                        break;
-//                    }
-//                    String restResponse = String.join("", openingBracket);
-//                    String[] quotationMarks = restResponse.split("\"");
-                    // TODO: some trimming??? before first bracket check??
-//                }
-
                 // retrieve json
                 JsonNode jsonNode = objectMapper.readTree(request);
                 JsonNode typeNode = jsonNode.findValue("type");
@@ -239,14 +160,14 @@ public class ServerListenerThread extends Thread {
                             break;
                         }
                         PeersMessage receivedPeers = objectMapper.readValue(request, PeersMessage.class);
-                        // TODO: verification needed?
-//                        if (!receivedPeers.verifyPeersMessage()) {
-//                            badRequest = true;
-//                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Peers-Message failed verification!"));
-//                            log.warning("Peers-Message failed verification!");
-//                            break;
-//                        }
-                        boolean peersWereUpdated = serverNode.updateListOfDiscoveredPeers(receivedPeers.getPeers());
+                        List<String> validPeers = receivedPeers.verifyPeersMessage();
+                        if (validPeers == null) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Peers-Message failed verification!"));
+                            log.warning("Peers-Message failed verification!");
+                            break;
+                        }
+                        boolean peersWereUpdated = serverNode.updateListOfDiscoveredPeers(validPeers);
                         log.info("Peers update? : " + peersWereUpdated);
                         continueWithoutResponse = true;
                         break;
