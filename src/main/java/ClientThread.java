@@ -7,81 +7,87 @@ import messages.HelloMessage;
 import messages.PeersMessage;
 
 import java.io.*;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
 
 import static Util.Util.*;
+import static Util.Util.error;
 
-public class ServerListenerThread extends Thread {
+public class ClientThread extends Thread {
 
+    private String host;
+    private int port;
     private ServerNode serverNode;
-    private ServerSocket serverSocket;
-    private ExecutorService service;
     private List<Socket> sockets;
+    private List<String> commands;
     private Logger log;
 
+    private Socket clientSocket;
+    private String clientLogMsg;
     private boolean wasGreeted = false;
 
-    public ServerListenerThread(ServerNode serverNode, ServerSocket serverSocket, ExecutorService service, List<Socket> sockets, Logger log) {
+
+    public ClientThread(String host, int port, ServerNode serverNode, List<Socket> sockets, List<String> commands, Logger log) {
+        this.host = host;
+        this.port = port;
         this.serverNode = serverNode;
-        this.serverSocket = serverSocket;
-        this.service = service;
         this.sockets = sockets;
+        this.commands = commands;
         this.log = log;
+        this.clientLogMsg = "[server: " + host + ":"+ port + "] ";
     }
 
     public void run() {
-        Socket socket = null;
-        boolean connectionOK = false;
+        log.info(clientLogMsg + "- launched");
+        if (!isConnectableAddress(host, port)) {
+            log.warning(clientLogMsg + "Node: " + host + ":" + port + "; is not a connectable address!");
+            this.close();
+        }
 
         try {
-            // wait for Client to connect
-            socket = serverSocket.accept();
-            sockets.add(socket);
-            service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets, log));
-            socket.setSoTimeout(1000*90); // terminate after 90s
-            log.info("Connected to new client: " + socket.getInetAddress());
+            clientSocket = new Socket(host, port);
+            sockets.add(clientSocket);
+            clientSocket.setSoTimeout(1000*90); // terminate after 90s
+            log.info(clientLogMsg + "- connected to new server");
 
             // prepare the input reader for the socket
-            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             // prepare the writer for responding to clients requests
-            PrintWriter writer = new PrintWriter(socket.getOutputStream());
+            PrintWriter writer = new PrintWriter(clientSocket.getOutputStream());
 
             String request = "";
             String response = "";
             ObjectMapper objectMapper = new ObjectMapper();
 
             // First send a hello
-            // TODO: agent = name of node?
             HelloMessage firstHello = new HelloMessage(hello, "0.8.0", serverNode.getName() + " " + serverNode.getVersionOfNode());
             response = objectMapper.writeValueAsString(firstHello);
             writer.println(response);
             writer.flush();
-            log.info("[first-greeted]: " + response);
+            log.info(clientLogMsg + "- sent first hello:" + response);
 
             // Second send getpeers
             GetPeersMessage firstGetPeers = new GetPeersMessage(getpeers);
             response = objectMapper.writeValueAsString(firstGetPeers);
             writer.println(response);
             writer.flush();
-            log.info("[first-asked-for-peers]: " + response);
+            log.info(clientLogMsg + "- sent first getpeers:" + response);
 
-            response = "";
+            boolean handshakeCompleted = false;
 
-            // read client requests
-            while (!Thread.currentThread().isInterrupted() && (request = reader.readLine()) != null) {
+            while (!Thread.currentThread().isInterrupted()
+                    && !handshakeCompleted
+                    && (request = reader.readLine()) != null) {
 
                 if (Thread.currentThread().isInterrupted()) {
                     break;
                 }
 
-                log.info("[received]: " + request);
+                log.info(clientLogMsg + "- received: " + request);
 
                 request = request.trim();
 
@@ -91,7 +97,7 @@ public class ServerListenerThread extends Thread {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
                     writer.println(response);
                     writer.flush();
-                    log.warning("Did not receive a valid json-message!");
+                    log.warning(clientLogMsg + "- did not receive a valid json-message!");
                     break;
                 }
 
@@ -103,7 +109,7 @@ public class ServerListenerThread extends Thread {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
                     writer.println(response);
                     writer.flush();
-                    log.warning("Unsupported message type received!");
+                    log.warning(clientLogMsg + "- unsupported message type received!");
                     break;
                 }
 
@@ -113,13 +119,14 @@ public class ServerListenerThread extends Thread {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
                     writer.println(response);
                     writer.flush();
-                    log.warning("Unsupported message type received!");
+                    log.warning(clientLogMsg + "- unsupported message type received!");
                     break;
                 } else if (type.equals("getchaintip") || type.equals("getmempool")) {
                     // other message-types not yet required
                     continue;
                 }
 
+                // TODO: lesen der artikel?
                 boolean badRequest = false;
                 boolean continueWithoutResponse = false;
 
@@ -128,18 +135,18 @@ public class ServerListenerThread extends Thread {
                     case hello:
                         // { "type" : "hello", "version" : "0.8.0", "agent" : "Kerma−Core Client 0.8" }
                         // { "version" : "0.8.0", "type" : "hello", "agent" : "Kerma−Core Client 0.8" }
-                        log.info("[Case: HELLO]");
+                        log.info(clientLogMsg + "- [Case: HELLO]");
                         if (!isParsableInJson(objectMapper, request, HelloMessage.class)) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Hello-Message could not be parsed!"));
-                            log.warning("Hello-Message could not be parsed!");
+                            log.warning(clientLogMsg + "- hello-Message could not be parsed!");
                             break;
                         }
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Hello-Message failed verification!"));
-                            log.warning("Hello-Message failed verification!");
+                            log.warning(clientLogMsg + "- hello-Message failed verification!");
                             break;
                         }
                         wasGreeted = true;
@@ -149,21 +156,21 @@ public class ServerListenerThread extends Thread {
 
                     case getpeers:
                         // { "type" : "getpeers" }
-                        log.info("[Case: GETPEERS]");
+                        log.info(clientLogMsg + "- [Case: GETPEERS]");
                         if (!wasGreeted) {
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
-                            log.warning("Unexpected message; 'hello' was expected!");
+                            log.warning(clientLogMsg + "- unexpected message; 'hello' was expected!");
                             badRequest = true;
                             break;
                         }
                         if (!isParsableInJson(objectMapper, request, GetPeersMessage.class)) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetPeers-Message could not be parsed!"));
-                            log.warning("GetPeers-Message could not be parsed!");
+                            log.warning(clientLogMsg + "- getPeers-Message could not be parsed!");
                             break;
                         }
                         GetPeersMessage receivedGetPeers = objectMapper.readValue(request, GetPeersMessage.class);
-                        
+
                         // peers are stored in servernode
                         List<String> knownPeers = new ArrayList(serverNode.getListOfDiscoveredPeers());
                         knownPeers.add(serverNode.getServerAddress()); // add own address into new list
@@ -173,17 +180,17 @@ public class ServerListenerThread extends Thread {
 
                     case peers:
                         // {"type" : "peers", "peers" : ["****.com:18018" ,"138.197.191.170:18018", "[fe80::f03c:91ff:fe2c:5a79]:18018"] }
-                        log.info("[Case: PEERS]");
+                        log.info(clientLogMsg + "- [Case: PEERS]");
                         if (!wasGreeted) {
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
-                            log.warning("Unexpected message; 'hello' was expected!");
+                            log.warning(clientLogMsg + "- unexpected message; 'hello' was expected!");
                             badRequest = true;
                             break;
                         }
                         if (!isParsableInJson(objectMapper, request, PeersMessage.class)) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Peers-Message could not be parsed!"));
-                            log.warning("Peers-Message could not be parsed!");
+                            log.warning(clientLogMsg + "- peers-Message could not be parsed!");
                             break;
                         }
                         PeersMessage receivedPeers = objectMapper.readValue(request, PeersMessage.class);
@@ -191,24 +198,25 @@ public class ServerListenerThread extends Thread {
                         if (validPeers == null) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Peers-Message failed verification!"));
-                            log.warning("Peers-Message failed verification!");
+                            log.warning(clientLogMsg + "- peers-Message failed verification!");
                             break;
                         }
-                        log.info("There were " + validPeers.size() + " valid peers");
+                        log.info(clientLogMsg + "- there were " + validPeers.size() + " valid peers");
                         String peersWereUpdated = serverNode.updateListOfDiscoveredPeers(validPeers);
                         if (peersWereUpdated == null) {
-                            log.severe("ERROR - peers could not be read from file!");
+                            log.severe(clientLogMsg + "- ERROR - peers could not be read from file!");
                         } else if (peersWereUpdated.equals("")) {
-                            log.info("No peers were updated");
+                            log.info(clientLogMsg + "- no peers were updated");
                         } else {
-                            log.info("Peers were updated : " + peersWereUpdated);
+                            log.info(clientLogMsg + "peers were updated : " + peersWereUpdated);
                         }
                         continueWithoutResponse = true;
+                        handshakeCompleted = true;
                         break;
 
                     case error:
                         // { "type" : "error" , "error" : "some error" }
-                        log.warning("[Case: ERROR]");
+                        log.warning(clientLogMsg + "- [Case: ERROR]");
                         response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected error received: " + request));
                         badRequest = true;
                         break;
@@ -219,7 +227,7 @@ public class ServerListenerThread extends Thread {
                 }
 
                 if (badRequest) {
-                    log.warning("BAD REQUEST!");
+                    log.warning(clientLogMsg + "- BAD REQUEST!");
                     if (response == null || !response.contains(error)) {
                         response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
                     }
@@ -229,46 +237,48 @@ public class ServerListenerThread extends Thread {
                 }
 
                 if (continueWithoutResponse) {
-                    log.info("continuing without response");
+                    log.info(clientLogMsg + "- continuing without response");
                     continue;
                 }
 
                 writer.println(response);
                 writer.flush();
-                log.info("[responded]: " + response);
+                log.info(clientLogMsg + "- responded: " + response);
             }
 
-            if (socket != null && !socket.isClosed()) {
-                try {
-                    socket.close();
-                    log.info("socket was closed");
-                } catch (IOException e) {
-                    // Ignored because we cannot handle it
-                }
-            }
+            // TODO: further client commands?
+
+            this.close();
 
         } catch (SocketException e) {
             // when the socket is closed, the I/O methods of the Socket will throw a SocketException
             // almost all SocketException cases indicate that the socket was closed
-            log.warning("socket was closed ba client");
+            log.warning(clientLogMsg + "- socket was closed");
 
         } catch (SocketTimeoutException e) {
             // when the socket is closed, the I/O methods of the Socket will throw a SocketException
             // almost all SocketException cases indicate that the socket was closed
-            log.warning("socket did not respond in time");
+            log.warning(clientLogMsg + "- socket did not respond in time");
 
         } catch (IOException e) {
-            log.warning("JSON Exception!");
+            log.warning(clientLogMsg + "- JSON Exception!");
             throw new UncheckedIOException(e);
 
+        } catch (Exception e) {
+            log.severe(clientLogMsg + "- Unknown exception of client-socket!");
+
         } finally {
-            if (socket != null && !socket.isClosed()) {
-                try {
-                    socket.close();
-                    log.warning("socket was closed by server");
-                } catch (IOException e) {
-                    // Ignored because we cannot handle it
-                }
+            this.close();
+        }
+    }
+
+    public void close() {
+        if (clientSocket != null && !clientSocket.isClosed()) {
+            try {
+                clientSocket.close();
+                log.info(clientLogMsg + "- clientsocket was closed");
+            } catch (IOException e) {
+                log.warning(clientLogMsg + "- Error while closing client socket: " + e.getMessage());
             }
         }
     }

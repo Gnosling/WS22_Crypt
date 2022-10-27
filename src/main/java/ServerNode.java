@@ -47,6 +47,7 @@ public class ServerNode {
             this.serverAddress = IP_ADDRESS + ":" + PORT;
 
             service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
+            service.execute(new ClientManagerThread(this, service, sockets, log));
             log.info("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
@@ -58,6 +59,10 @@ public class ServerNode {
             // read commands from the console
             while (true) {
                 String cmd = reader.readLine();
+
+                if (cmd == null) {
+                    continue;
+                }
 
                 // close sockets and listening threads
                 if (("shutdown").equals(cmd)) {
@@ -75,8 +80,28 @@ public class ServerNode {
                     }
                     log.info(" --- Peers --- \n" + peers);
 
+                } else if (cmd.startsWith("connect to ")) {
+                    String[] parts = cmd.split(" ");
+                    if (parts.length != 4) {
+                        log.warning("bad command; expected 'connect to <host> <port>");
+                        continue;
+                    }
+                    String host = parts[2];
+                    String portString = parts[3];
+                    int port = 0;
+                    try {
+                        port = Integer.valueOf(portString);
+                    } catch (NumberFormatException numberFormatException) {
+                        log.warning("wrong port; expected 'connect to <host> <port>");
+                    }
+                    List<String> commands = new ArrayList<>();
+                    service.execute(new ClientThread(host, port, this, sockets, commands, log));
+
+//                } else if (cmd.equals("start clientmanager")) {
+//                    // TODO: start new clientmanager?
+
                 } else {
-                    log.info("unknown command: " + cmd);
+                    log.warning("unknown command: " + cmd);
                 }
             }
         } catch (IOException e) {
@@ -132,7 +157,7 @@ public class ServerNode {
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
     }
 
-    public String updateListOfDiscoveredPeers(List<String> receivedPeers) {
+    public synchronized String updateListOfDiscoveredPeers(List<String> receivedPeers) {
 
         String updatedInfo = "";
         List<String> knownPeers = Util.readPeersOfPersistentFile(Launcher.fileNameOfStoredPeers);

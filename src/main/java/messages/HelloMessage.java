@@ -1,10 +1,5 @@
 package messages;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
-
 public class HelloMessage {
     private String type;
     private String version; // must be 0.8.X
@@ -58,17 +53,5 @@ public class HelloMessage {
 
     public void setAgent(String agent) {
         this.agent = agent;
-    }
-
-    public static void main(String[] args) throws IOException {
-        String json = "{ \"type\" : \"hello\", \"version\" : \"0.8.0\" }";
-        // { "type" : "hello", "version" : "0.8.0" }
-
-
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        HelloMessage car = objectMapper.readValue(json, HelloMessage.class);
-        JsonNode jsonNode = objectMapper.readTree(json);
-        int i = 0;
     }
 }

@@ -1,14 +1,9 @@
 package Util;
 
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 
 import java.io.*;
-import java.lang.reflect.Type;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,11 +25,9 @@ public class Util {
         return true;
     }
 
-    public static boolean isValidAddress(String host, int port) {
+    public static boolean isConnectableAddress(String host, int port) {
         try {
             Socket socket = new Socket(host, port);
-        } catch (UnknownHostException | IllegalArgumentException e) {
-            return false;
         } catch (Exception e) {
             return false;
         }

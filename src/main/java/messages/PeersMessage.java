@@ -1,8 +1,5 @@
 package messages;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -107,17 +104,17 @@ public class PeersMessage {
         this.peers = peers;
     }
 
-    public static void main(String[] args) throws Exception {
-        PeersMessage peers = new ObjectMapper().readValue("{\"type\" : \"peers\", \"peers\" : [" +
-                "\"****.com:18018\" ," +
-                "\"138.197.191.170:18018\", " +
-                "\"[fe80::f03c:91ff:fe2c:5a79]:18018\", " +
-                "\"128.130.122.101:18018\", " +
-                "\"20.23.212.159:18018\", " +
-                "\"84.112.193.9:18018\", " +
-                "\"143.244.205.206:18018\", " +
-                "\"kerma.duckdns.org:5253\"] }", PeersMessage.class);
-        peers.verifyPeersMessage();
-        int i = 0;
-    }
+//    public static void main(String[] args) throws Exception {
+//        PeersMessage peers = new ObjectMapper().readValue("{\"type\" : \"peers\", \"peers\" : [" +
+//                "\"****.com:18018\" ," +
+//                "\"138.197.191.170:18018\", " +
+//                "\"[fe80::f03c:91ff:fe2c:5a79]:18018\", " +
+//                "\"128.130.122.101:18018\", " +
+//                "\"20.23.212.159:18018\", " +
+//                "\"84.112.193.9:18018\", " +
+//                "\"143.244.205.206:18018\", " +
+//                "\"kerma.duckdns.org:5253\"] }", PeersMessage.class);
+//        peers.verifyPeersMessage();
+//        int i = 0;
+//    }
 }
