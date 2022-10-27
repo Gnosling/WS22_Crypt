@@ -132,10 +132,13 @@ public class ServerNode {
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
     }
 
-    public boolean updateListOfDiscoveredPeers(List<String> receivedPeers) {
+    public String updateListOfDiscoveredPeers(List<String> receivedPeers) {
 
-        boolean wasUpdated = false;
+        String updatedInfo = "";
         List<String> knownPeers = Util.readPeersOfPersistentFile(Launcher.fileNameOfStoredPeers);
+        if (knownPeers == null) {
+            return null;
+        }
 
         for (String peer : receivedPeers) {
             if (peer.equals(serverAddress)) {
@@ -143,16 +146,16 @@ public class ServerNode {
             }
             if (!knownPeers.contains(peer)) {
                 knownPeers.add(peer);
-                wasUpdated = true;
+                updatedInfo += "new peer: " + peer;
             }
         }
 
-        if (wasUpdated) {
+        if (!updatedInfo.equals("")) {
             listOfDiscoveredPeers = knownPeers;
             Util.storePeersOnPersistentFile(knownPeers, Launcher.fileNameOfStoredPeers);
         }
 
-        return wasUpdated;
+        return updatedInfo;
     }
 
     public ExecutorService getService() {

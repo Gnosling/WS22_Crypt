@@ -1,8 +1,12 @@
 package Util;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 
 import java.io.*;
+import java.lang.reflect.Type;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -35,6 +39,15 @@ public class Util {
             return false;
         }
         return true;
+    }
+
+    public static boolean isParsableInJson(ObjectMapper objectMapper, String object, Class type) {
+        try {
+            objectMapper.readValue(object, type);
+            return true;
+        } catch (IOException exception) {
+            return false;
+        }
     }
 
     public static List<String> readPeersOfPersistentFile(String fileName) {

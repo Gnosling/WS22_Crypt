@@ -110,6 +110,17 @@ public class ServerListenerThread extends Thread {
 
                 // retrieve type of the json-msg
                 String type = typeNode.textValue();
+                if (type == null) {
+                    response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
+                    writer.println(response);
+                    writer.flush();
+                    log.warning("Unsupported message type received!");
+                    break;
+                } else if (type.equals("getchaintip") || type.equals("getmempool")) {
+                    // other message-types not yet required
+                    continue;
+                }
+
                 boolean badRequest = false;
                 boolean continueWithoutResponse = false;
 
@@ -119,6 +130,12 @@ public class ServerListenerThread extends Thread {
                         // { "type" : "hello", "version" : "0.8.0", "agent" : "Kerma−Core Client 0.8" }
                         // { "version" : "0.8.0", "type" : "hello", "agent" : "Kerma−Core Client 0.8" }
                         log.info("[Case: HELLO]");
+                        if (!isParsableInJson(objectMapper, request, HelloMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Hello-Message could not be parsed!"));
+                            log.warning("Hello-Message could not be parsed!");
+                            break;
+                        }
                         HelloMessage receivedHello = objectMapper.readValue(request, HelloMessage.class);
                         if (!receivedHello.verifyHelloMessage()) {
                             badRequest = true;
@@ -140,7 +157,12 @@ public class ServerListenerThread extends Thread {
                             badRequest = true;
                             break;
                         }
-                        // There is no need to create a json-object for the request --> DOCH!! TODO: doch?
+                        if (!isParsableInJson(objectMapper, request, GetPeersMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetPeers-Message could not be parsed!"));
+                            log.warning("GetPeers-Message could not be parsed!");
+                            break;
+                        }
                         GetPeersMessage receivedGetPeers = objectMapper.readValue(request, GetPeersMessage.class);
                         
                         // peers are stored in servernode
@@ -159,6 +181,12 @@ public class ServerListenerThread extends Thread {
                             badRequest = true;
                             break;
                         }
+                        if (!isParsableInJson(objectMapper, request, PeersMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Peers-Message could not be parsed!"));
+                            log.warning("Peers-Message could not be parsed!");
+                            break;
+                        }
                         PeersMessage receivedPeers = objectMapper.readValue(request, PeersMessage.class);
                         List<String> validPeers = receivedPeers.verifyPeersMessage();
                         if (validPeers == null) {
@@ -167,8 +195,15 @@ public class ServerListenerThread extends Thread {
                             log.warning("Peers-Message failed verification!");
                             break;
                         }
-                        boolean peersWereUpdated = serverNode.updateListOfDiscoveredPeers(validPeers);
-                        log.info("Peers update? : " + peersWereUpdated);
+                        log.info("There were " + validPeers.size() + " valid peers");
+                        String peersWereUpdated = serverNode.updateListOfDiscoveredPeers(validPeers);
+                        if (peersWereUpdated == null) {
+                            log.severe("ERROR - peers could not be read from file!");
+                        } else if (peersWereUpdated.equals("")) {
+                            log.info("No peers were updated");
+                        } else {
+                            log.info("Peers were updated : " + peersWereUpdated);
+                        }
                         continueWithoutResponse = true;
                         break;
 
