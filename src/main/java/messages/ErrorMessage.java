@@ -3,13 +3,13 @@ package messages;
 public class ErrorMessage {
 
     private String type;
-    private String message;
+    private String error;
 
     public ErrorMessage() {};
 
-    public ErrorMessage(String type, String message) {
+    public ErrorMessage(String type, String error) {
         this.type = type;
-        this.message = message;
+        this.error = error;
     }
 
     public String getType() {
@@ -20,11 +20,11 @@ public class ErrorMessage {
         this.type = type;
     }
 
-    public String getMessage() {
-        return message;
+    public String getError() {
+        return error;
     }
 
-    public void setMessage(String message) {
-        this.message = message;
+    public void setError(String error) {
+        this.error = error;
     }
 }

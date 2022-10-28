@@ -44,7 +44,16 @@ public class PeersMessage {
                 continue;
             }
 
-            String address = peer.substring(0, peer.lastIndexOf(":"));
+            String address = peer.substring(0, peer.lastIndexOf(":")).trim();
+
+            if (address.equals("")
+                    || address.equals("localhost")
+                    || address.equals("127.0.0.0")
+                    || address.equals("1.1.1.1")
+                    || address.equals("8.8.8.8")) {
+                continue;
+            }
+
             // check ip4
             String[] numbers = address.split("\\.");
             if (numbers.length == 4) {

@@ -150,7 +150,6 @@ public class ClientThread extends Thread {
                             break;
                         }
                         wasGreeted = true;
-                        // TODO: skip sending hello again?
                         continueWithoutResponse = true;
                         break;
 

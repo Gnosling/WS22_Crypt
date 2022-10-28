@@ -39,7 +39,6 @@ public class ServerNode {
 
     public void launch() {
         log.info("launching ...");
-        // TODO: sich das nochmals ansehen!
         service = Executors.newFixedThreadPool(50);
 
         try {
@@ -99,6 +98,10 @@ public class ServerNode {
 
 //                } else if (cmd.equals("start clientmanager")) {
 //                    // TODO: start new clientmanager?
+
+                } else if (cmd.equals("reload persistent peers")) {
+                    listOfDiscoveredPeers = Util.readPeersOfPersistentFile(Launcher.fileNameOfStoredPeers);
+                    log.info("read persistent peers");
 
                 } else {
                     log.warning("unknown command: " + cmd);
@@ -171,7 +174,7 @@ public class ServerNode {
             }
             if (!knownPeers.contains(peer)) {
                 knownPeers.add(peer);
-                updatedInfo += "new peer: " + peer;
+                updatedInfo += "new peer: " + peer + ", ";
             }
         }
 

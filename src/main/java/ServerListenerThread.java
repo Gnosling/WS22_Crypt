@@ -58,7 +58,6 @@ public class ServerListenerThread extends Thread {
             ObjectMapper objectMapper = new ObjectMapper();
 
             // First send a hello
-            // TODO: agent = name of node?
             HelloMessage firstHello = new HelloMessage(hello, "0.8.0", serverNode.getName() + " " + serverNode.getVersionOfNode());
             response = objectMapper.writeValueAsString(firstHello);
             writer.println(response);
@@ -143,7 +142,6 @@ public class ServerListenerThread extends Thread {
                             break;
                         }
                         wasGreeted = true;
-                        // TODO: skip sending hello again?
                         continueWithoutResponse = true;
                         break;
 
