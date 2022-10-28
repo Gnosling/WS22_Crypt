@@ -12,7 +12,7 @@ public class Launcher {
         int PORT = 18018;
         String IP_ADDRESS = "139.59.159.65";
         String name = "not node, hot implode";
-        String versionOfNode = "0.9";
+        String versionOfNode = "1.0";
         List<String> listOfDiscoveredPeers = Util.readPeersOfPersistentFile(fileNameOfStoredPeers);
 
         Logger log = Logger.getLogger("logger");

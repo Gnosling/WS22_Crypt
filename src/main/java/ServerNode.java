@@ -169,6 +169,7 @@ public class ServerNode {
         }
 
         for (String peer : receivedPeers) {
+            peer = peer.trim();
             if (peer.equals(serverAddress)) {
                 continue;
             }
