@@ -20,16 +20,28 @@ public class Block implements Object {
     @JsonProperty("T")
     private String t;
 
+    private String miner;
+    private String note;
+
     public Block() {
     }
 
-    public Block(String type, List<String> txids, String nonce, String previd, int created, String t) {
+    public Block(String type,
+                 List<String> txids,
+                 String nonce,
+                 String previd,
+                 int created,
+                 String t,
+                 String miner,
+                 String note) {
         this.type = type;
         this.txids = txids;
         this.nonce = nonce;
         this.previd = previd;
         this.created = created;
         this.t = t;
+        this.miner = miner;
+        this.note = note;
     }
 
     public boolean verifyObject(){
@@ -83,5 +95,21 @@ public class Block implements Object {
 
     public void setT(String t) {
         this.t = t;
+    }
+
+    public String getMiner() {
+        return miner;
+    }
+
+    public void setMiner(String miner) {
+        this.miner = miner;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
     }
 }

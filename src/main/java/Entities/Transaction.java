@@ -1,17 +1,21 @@
 package Entities;
 
-import Util.TransactionSerializer;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import java.util.List;
 
+//@JsonPropertyOrder({
+//        "height",
+//        "inputs",
+//        "outputs",
+//        "type"
+//})
 public class Transaction implements Object {
 
     private static class Input {
         private static class Outpoint {
-            private String txid;
             private long index;
+            private String txid;
 
             public Outpoint() {}
 

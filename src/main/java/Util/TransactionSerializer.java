@@ -19,13 +19,13 @@ public class TransactionSerializer extends JsonSerializer<Transaction> {
     public void serialize(Transaction transaction, JsonGenerator jsonGenerator, SerializerProvider serializerProvider)
             throws IOException, JsonProcessingException {
         jsonGenerator.writeStartObject();
-        jsonGenerator.writeObjectField("type", transaction.getType());
         if (transaction.isCoinbase()) {
             jsonGenerator.writeObjectField("height", transaction.getHeight());
         } else {
             jsonGenerator.writeObjectField("inputs", transaction.getInputs());
         }
         jsonGenerator.writeObjectField("outputs", transaction.getOutputs());
+        jsonGenerator.writeObjectField("type", transaction.getType());
         jsonGenerator.writeEndObject();
     }
 
