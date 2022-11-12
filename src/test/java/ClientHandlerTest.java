@@ -1,3 +1,4 @@
+
 import Util.Util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +15,7 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -44,6 +46,7 @@ public class ClientHandlerTest
         String name = "not node, hot implode";
         String versionOfNode = "0.9";
         List<String> listOfDiscoveredPeers = Util.readPeersOfPersistentFile("peers.txt");
+        HashMap<String, Entities.Object> listOfObjects = new HashMap<>();
 
         Logger log = Logger.getLogger("logger");
 
@@ -54,7 +57,7 @@ public class ClientHandlerTest
 
         objectMapper = new ObjectMapper();
 
-        testServer = new ServerNode(PORT, IP_ADDRESS, name, versionOfNode, listOfDiscoveredPeers, log);
+        testServer = new ServerNode(PORT, IP_ADDRESS, name, versionOfNode, listOfDiscoveredPeers, listOfObjects, log);
         new Thread(() -> {
             testServer.launch();
         }).start();

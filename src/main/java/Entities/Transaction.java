@@ -1,8 +1,14 @@
 package Entities;
 
+import Util.TransactionSerializer;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 
 import java.util.List;
+import java.util.Objects;
 
 //@JsonPropertyOrder({
 //        "height",
@@ -22,6 +28,15 @@ public class Transaction implements Object {
             public Outpoint(String txid, long index) {
                 this.txid = txid;
                 this.index = index;
+            }
+
+            @Override
+            public boolean equals(java.lang.Object o) {
+                if (this == o) return true;
+                if (o == null || getClass() != o.getClass()) return false;
+                Outpoint that = (Outpoint) o;
+                return txid == null ? that.txid == null : txid.equals(that.txid)
+                        && index == that.index;
             }
 
             public String getTxid() {
@@ -51,6 +66,15 @@ public class Transaction implements Object {
             this.sig = sig;
         }
 
+        @Override
+        public boolean equals(java.lang.Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Input that = (Input) o;
+            return outpoint == null ? that.outpoint == null : outpoint.equals(that.outpoint)
+                    && sig == null ? that.sig == null : sig.equals(that.sig);
+        }
+
         public Outpoint getOutpoint() {
             return outpoint;
         }
@@ -78,6 +102,14 @@ public class Transaction implements Object {
             this.pubkey = pubkey;
             this.value = value;
         }
+        @Override
+        public boolean equals(java.lang.Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Output that = (Output) o;
+            return pubkey == null ? that.pubkey == null : pubkey.equals(that.pubkey)
+                    && value == that.value;
+        }
 
         public String getPubkey() {
             return pubkey;
@@ -100,8 +132,6 @@ public class Transaction implements Object {
     private long height;
     private List<Input> inputs;
     private List<Output> outputs;
-    @JsonIgnore
-    private boolean coinbase;
 
     public Transaction() {}
 
@@ -113,10 +143,39 @@ public class Transaction implements Object {
     }
 
     public boolean verifyObject(){
+        if(isCoinbase()) {
+            return true;
+        }
         // TODO: implement
-        // index + value is int >= 0
-        // sum of inputs must be >= value in output
-        return false;
+        return true;
+    }
+
+    @Override
+    public String toJson() throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Transaction.class, new TransactionSerializer());
+        objectMapper.registerModule(module);
+        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
+
+        return objectMapper.writeValueAsString(this);
+    }
+
+    public void setSignatureToNull() {
+        for(Input in : inputs) {
+            in.setSig(null);
+        }
+    }
+
+    @Override
+    public boolean equals(java.lang.Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Transaction that = (Transaction) o;
+        return type == null ? that.type == null : type.equals(that.type)
+                && height == that.height
+                && inputs == null ? that.inputs == null : inputs.equals(that.inputs)
+                && outputs == null ? that.outputs == null : outputs.equals(that.outputs);
     }
 
     public String getType() {
@@ -152,17 +211,6 @@ public class Transaction implements Object {
     }
 
     public boolean isCoinbase() {
-        if (!coinbase) {
-            if (inputs == null) {
-                coinbase = true;
-            } else {
-                coinbase = false;
-            }
-        }
-        return coinbase;
-    }
-
-    public void setCoinbase(boolean coinbase) {
-        this.coinbase = coinbase;
+        return inputs == null;
     }
 }

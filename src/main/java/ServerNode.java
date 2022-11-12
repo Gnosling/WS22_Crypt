@@ -1,3 +1,4 @@
+import Entities.Object;
 import Util.Util;
 
 import java.io.BufferedReader;
@@ -8,7 +9,9 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +24,7 @@ public class ServerNode {
     private String name;
     private String versionOfNode;
     private List<String> listOfDiscoveredPeers;
+    private HashMap<String, Object> listOfObjects;
     private Logger log;
 
     private ExecutorService service;
@@ -28,12 +32,14 @@ public class ServerNode {
     private List<Socket> sockets = new ArrayList<>();
     private String serverAddress;
 
-    public ServerNode(int PORT, String IP_ADDRESS, String name, String versionOfNode, List<String> listOfDiscoveredPeers, Logger log) {
+    public ServerNode(int PORT, String IP_ADDRESS, String name, String versionOfNode,
+                      List<String> listOfDiscoveredPeers, HashMap<String, Object> listOfObjects, Logger log) {
         this.PORT = PORT;
         this.IP_ADDRESS = IP_ADDRESS;
         this.name = name;
         this.versionOfNode = versionOfNode;
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
+        this.listOfObjects = listOfObjects;
         this.log = log;
     }
 
@@ -46,7 +52,7 @@ public class ServerNode {
             this.serverAddress = IP_ADDRESS + ":" + PORT;
 
             service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
-            service.execute(new ClientManagerThread(this, service, sockets, log));
+//            service.execute(new ClientManagerThread(this, service, sockets, log));
             log.info("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
@@ -79,6 +85,13 @@ public class ServerNode {
                     }
                     log.info(" --- Peers --- \n" + peers);
 
+                } else if (("objects").equals(cmd)) {
+                    StringBuilder objects = new StringBuilder();
+                    for (Map.Entry<String, Object> entry : listOfObjects.entrySet()) {
+                        objects.append(entry.getKey() + ":" + entry.getValue().toString() + "\n");
+                    }
+                    log.info(" --- Objects --- \n" + objects);
+
                 } else if (cmd.startsWith("connect to ")) {
                     String[] parts = cmd.split(" ");
                     if (parts.length != 4) {
@@ -93,7 +106,7 @@ public class ServerNode {
                     } catch (NumberFormatException numberFormatException) {
                         log.warning("wrong port; expected 'connect to <host> <port>");
                     }
-                    List<String> commands = new ArrayList<>();
+                    HashMap<String, List<String>> commands = new HashMap<>();
                     service.execute(new ClientThread(host, port, this, sockets, commands, log));
 
 //                } else if (cmd.equals("start clientmanager")) {
@@ -160,6 +173,14 @@ public class ServerNode {
         this.listOfDiscoveredPeers = listOfDiscoveredPeers;
     }
 
+    public HashMap<String, Object> getListOfObjects() {
+        return listOfObjects;
+    }
+
+    public void setListOfObjects(HashMap<String, Object> listOfObjects) {
+        this.listOfObjects = listOfObjects;
+    }
+
     public synchronized String updateListOfDiscoveredPeers(List<String> receivedPeers) {
 
         String updatedInfo = "";
@@ -182,6 +203,29 @@ public class ServerNode {
         if (!updatedInfo.equals("")) {
             listOfDiscoveredPeers = knownPeers;
             Util.storePeersOnPersistentFile(knownPeers, Launcher.fileNameOfStoredPeers);
+        }
+
+        return updatedInfo;
+    }
+
+    public synchronized String appendToObjects(HashMap<String, Object> receivedObjects) {
+        String updatedInfo = "";
+        HashMap<String, Object> knownObjects = Util.readObjectsOfPersistentFile(Launcher.fileNameOfStoredObjects);
+        HashMap<String, Object> newObjects = new HashMap<>();
+        if (knownObjects == null) {
+            return null;
+        }
+
+        for (Map.Entry<String, Object> object : receivedObjects.entrySet()) {
+            if (!knownObjects.containsKey(object.getKey())) {
+                newObjects.put(object.getKey(), object.getValue());
+                listOfObjects.put(object.getKey(), object.getValue());
+                updatedInfo += "new object: " + object.getKey() + ", ";
+            }
+        }
+
+        if (!updatedInfo.equals("")) {
+            Util.appendObjectsOnPersistentFile(newObjects, Launcher.fileNameOfStoredObjects);
         }
 
         return updatedInfo;

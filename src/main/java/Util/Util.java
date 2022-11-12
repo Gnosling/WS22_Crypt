@@ -1,11 +1,17 @@
 package Util;
 
+import Entities.Object;
+import Entities.Transaction;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.google.common.hash.Hashing;
+import org.bouncycastle.crypto.Signer;
+import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 
 public class Util {
 
@@ -13,6 +19,9 @@ public class Util {
     public static final String hello = "hello";
     public static final String getpeers = "getpeers";
     public static final String peers = "peers";
+    public static final String getobject = "getobject";
+    public static final String ihaveobject = "ihaveobject";
+    public static final String object = "object";
 
 
     public static boolean isJson(String json) {
@@ -67,6 +76,53 @@ public class Util {
             writer = new BufferedWriter(new FileWriter(fileName));
             for (String peer : peers) {
                 writer.write(peer + "\n");
+            }
+            writer.close();
+            return true;
+
+        } catch (IOException exception) {
+            return false;
+        }
+    }
+
+    public static HashMap<String, Object> readObjectsOfPersistentFile(String fileName) {
+        BufferedReader reader = null;
+        ObjectMapper objectMapper = new ObjectMapper();
+        HashMap<String, Object> objects = new HashMap<>();
+        try {
+            reader = new BufferedReader(new FileReader(fileName));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if(!line.equals("")) {
+                    String[] parts = line.split("~");
+                    if(parts.length >= 2){
+                        String key = parts[0].trim();
+                        String body = line.substring(key.length()+1).trim();
+                        if(isJson(body)) {
+                            Object object = objectMapper.readValue(body, Object.class);
+                            objects.put(key, object);
+                        }
+                    }
+                }
+            }
+            reader.close();
+            return objects;
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    public static boolean appendObjectsOnPersistentFile(HashMap<String, Object> objects, String fileName) {
+        BufferedWriter writer = null;
+        try {
+            writer = new BufferedWriter(new FileWriter(fileName, true));
+            for (Map.Entry<String, Object> object :
+                    objects.entrySet()) {
+
+                // put key and value separated
+                writer.write(object.getKey() + "~" + object.getValue().toJson());
+                // new line
+                writer.newLine();
             }
             writer.close();
             return true;

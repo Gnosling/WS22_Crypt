@@ -2,6 +2,7 @@ package Entities;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
@@ -17,6 +18,9 @@ public interface Object {
     boolean verifyObject();
     void setType(String block);
     String getType();
+    String toJson() throws JsonProcessingException;
+    @Override
+    boolean equals(java.lang.Object o);
 }
 
 //As.EXISTING_PROPERTY

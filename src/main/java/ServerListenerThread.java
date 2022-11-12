@@ -1,10 +1,11 @@
-import Util.Util;
+import Entities.Object;
+import Entities.Transaction;
+import Util.TransactionSerializer;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import messages.ErrorMessage;
-import messages.GetPeersMessage;
-import messages.HelloMessage;
-import messages.PeersMessage;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import messages.*;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -12,6 +13,7 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
@@ -56,6 +58,10 @@ public class ServerListenerThread extends Thread {
             String request = "";
             String response = "";
             ObjectMapper objectMapper = new ObjectMapper();
+            SimpleModule module = new SimpleModule();
+            module.addSerializer(Transaction.class, new TransactionSerializer());
+            objectMapper.registerModule(module);
+            objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
 
             // First send a hello
             HelloMessage firstHello = new HelloMessage(hello, "0.8.0", serverNode.getName() + " " + serverNode.getVersionOfNode());
@@ -85,7 +91,7 @@ public class ServerListenerThread extends Thread {
                 request = request.trim();
 
                 // verify json
-                boolean isJson = Util.isJson(request);
+                boolean isJson = Util.Util.isJson(request);
                 if (!isJson || request == null || request.trim().equals("")) {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Did not receive a valid json-message!"));
                     writer.println(response);
@@ -96,7 +102,7 @@ public class ServerListenerThread extends Thread {
 
                 // retrieve json
                 JsonNode jsonNode = objectMapper.readTree(request);
-                JsonNode typeNode = jsonNode.findValue("type");
+                JsonNode typeNode = jsonNode.get("type");
 
                 if (typeNode == null) {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
@@ -121,6 +127,8 @@ public class ServerListenerThread extends Thread {
 
                 boolean badRequest = false;
                 boolean continueWithoutResponse = false;
+                String key = "";
+                Object value = null;
 
                 switch (type) {
 
@@ -201,6 +209,114 @@ public class ServerListenerThread extends Thread {
                         } else {
                             log.info("Peers were updated : " + peersWereUpdated);
                         }
+                        continueWithoutResponse = true;
+                        break;
+
+                    case getobject:
+                        // {"\"type\" : \"getobject\" ,\"objectid\":\"0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8\"}
+                        log.info("[Case: GETOBJECT]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, GetObjectMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetObject-Message could not be parsed!"));
+                            log.warning("GetObject-Message could not be parsed!");
+                            break;
+                        }
+                        GetObjectMessage getObjectMessage = objectMapper.readValue(request, GetObjectMessage.class);
+                        key = getObjectMessage.getObjectid();
+                        value = serverNode.getListOfObjects().get(key);
+                        if(value == null) {
+                            // don't have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        ObjectMessage sendObjectMessage = new ObjectMessage(object, value);
+                        response = objectMapper.writeValueAsString(sendObjectMessage);
+                        break;
+
+                    case ihaveobject:
+                        // {"\"type\" : \"ihaveobject\" ,\"objectid\":\"0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8\"}
+                        log.info("[Case: IHAVEOBJECT]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, IHaveObjectMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "IHaveObject-Message could not be parsed!"));
+                            log.warning("IHaveObject-Message could not be parsed!");
+                            break;
+                        }
+                        IHaveObjectMessage iHaveObjectMessage = objectMapper.readValue(request, IHaveObjectMessage.class);
+                        key = iHaveObjectMessage.getObjectid();
+                        value = serverNode.getListOfObjects().get(key);
+                        if(value != null) {
+                            // have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        GetObjectMessage sendGetObjectMessage = new GetObjectMessage(getobject, key);
+                        response = objectMapper.writeValueAsString(sendGetObjectMessage);
+                        break;
+
+                    case object:
+                        log.info("[Case: OBJECT]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, ObjectMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be parsed!"));
+                            log.warning("Object-Message could not be parsed!");
+                            break;
+                        }
+                        ObjectMessage objectMessage = objectMapper.readValue(request, ObjectMessage.class);
+                        value = objectMessage.getObject();
+                        if(serverNode.getListOfObjects().containsValue(value)) {
+                            // have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        if(!value.verifyObject()) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
+                            log.warning("Object-Message could not be verified!");
+                            break;
+                        }
+
+                        key = computeHash(objectMapper.writeValueAsString(value));
+                        if(serverNode.getListOfObjects().containsKey(key)) {
+                            // have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        HashMap<String, Object> newObjects = new HashMap<>();
+                        newObjects.put(key,value);
+                        String objectsWereUpdated = serverNode.appendToObjects(newObjects);
+                        if (objectsWereUpdated == null) {
+                            log.severe("ERROR - objects could not be read from file!");
+                        } else if (objectsWereUpdated.equals("")) {
+                            log.info("No objects were updated");
+                        } else {
+                            log.info("Objects were updated : " + objectsWereUpdated);
+                        }
+                        HashMap<String, List<String>> cmds = new HashMap<>();
+                        List<String> params = new ArrayList<>();
+                        params.add(key);
+                        cmds.put(ihaveobject, params);
+                        // TODO: activate
+//                        service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+
                         continueWithoutResponse = true;
                         break;
 

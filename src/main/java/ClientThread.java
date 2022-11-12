@@ -1,17 +1,21 @@
+import Entities.Object;
+import Entities.Transaction;
 import Util.Util;
+import Util.TransactionSerializer;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import messages.ErrorMessage;
-import messages.GetPeersMessage;
-import messages.HelloMessage;
-import messages.PeersMessage;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import messages.*;
 
 import java.io.*;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import static Util.Util.*;
@@ -23,7 +27,7 @@ public class ClientThread extends Thread {
     private int port;
     private ServerNode serverNode;
     private List<Socket> sockets;
-    private List<String> commands;
+    private HashMap<String, List<String>> commands;
     private Logger log;
 
     private Socket clientSocket;
@@ -31,7 +35,7 @@ public class ClientThread extends Thread {
     private boolean wasGreeted = false;
 
 
-    public ClientThread(String host, int port, ServerNode serverNode, List<Socket> sockets, List<String> commands, Logger log) {
+    public ClientThread(String host, int port, ServerNode serverNode, List<Socket> sockets, HashMap<String, List<String>> commands, Logger log) {
         this.host = host;
         this.port = port;
         this.serverNode = serverNode;
@@ -62,6 +66,10 @@ public class ClientThread extends Thread {
             String request = "";
             String response = "";
             ObjectMapper objectMapper = new ObjectMapper();
+            SimpleModule module = new SimpleModule();
+            module.addSerializer(Transaction.class, new TransactionSerializer());
+            objectMapper.registerModule(module);
+            objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
 
             // First send a hello
             HelloMessage firstHello = new HelloMessage(hello, "0.8.0", serverNode.getName() + " " + serverNode.getVersionOfNode());
@@ -78,9 +86,11 @@ public class ClientThread extends Thread {
             log.info(clientLogMsg + "- sent first getpeers:" + response);
 
             boolean handshakeCompleted = false;
+            boolean broadcasting = !commands.isEmpty();
+            boolean commandsSent = false;
 
             while (!Thread.currentThread().isInterrupted()
-                    && !handshakeCompleted
+                    && (!handshakeCompleted || broadcasting)
                     && (request = reader.readLine()) != null) {
 
                 if (Thread.currentThread().isInterrupted()) {
@@ -103,7 +113,7 @@ public class ClientThread extends Thread {
 
                 // retrieve json
                 JsonNode jsonNode = objectMapper.readTree(request);
-                JsonNode typeNode = jsonNode.findValue("type");
+                JsonNode typeNode = jsonNode.get("type");
 
                 if (typeNode == null) {
                     response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
@@ -126,9 +136,10 @@ public class ClientThread extends Thread {
                     continue;
                 }
 
-                // TODO: lesen der artikel?
                 boolean badRequest = false;
                 boolean continueWithoutResponse = false;
+                String key = "";
+                Object value = null;
 
                 switch (type) {
 
@@ -211,6 +222,115 @@ public class ClientThread extends Thread {
                         }
                         continueWithoutResponse = true;
                         handshakeCompleted = true;
+                        log.info(clientLogMsg + "- handshake completed");
+                        break;
+
+                    case getobject:
+                        // {"\"type\" : \"getobject\" ,\"objectid\":\"0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8\"}
+                        log.info(clientLogMsg + "- [Case: GETOBJECT]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning(clientLogMsg + "- Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, GetObjectMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetObject-Message could not be parsed!"));
+                            log.warning(clientLogMsg + "- GetObject-Message could not be parsed!");
+                            break;
+                        }
+                        GetObjectMessage getObjectMessage = objectMapper.readValue(request, GetObjectMessage.class);
+                        key = getObjectMessage.getObjectid();
+                        value = serverNode.getListOfObjects().get(key);
+                        if(value == null) {
+                            // don't have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        ObjectMessage sendObjectMessage = new ObjectMessage(object, value);
+                        response = objectMapper.writeValueAsString(sendObjectMessage);
+                        break;
+
+                    case ihaveobject:
+                        // {"\"type\" : \"ihaveobject\" ,\"objectid\":\"0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8\"}
+                        log.info(clientLogMsg + "- [Case: IHAVEOBJECT]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning(clientLogMsg + "- Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, IHaveObjectMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "IHaveObject-Message could not be parsed!"));
+                            log.warning(clientLogMsg + "- IHaveObject-Message could not be parsed!");
+                            break;
+                        }
+                        IHaveObjectMessage iHaveObjectMessage = objectMapper.readValue(request, IHaveObjectMessage.class);
+                        key = iHaveObjectMessage.getObjectid();
+                        value = serverNode.getListOfObjects().get(key);
+                        if(value != null) {
+                            // have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        GetObjectMessage sendGetObjectMessage = new GetObjectMessage(getobject, key);
+                        response = objectMapper.writeValueAsString(sendGetObjectMessage);
+                        break;
+
+                    case object:
+                        log.info(clientLogMsg + "- [Case: OBJECT]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning(clientLogMsg + "- Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, ObjectMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be parsed!"));
+                            log.warning(clientLogMsg + "- Object-Message could not be parsed!");
+                            break;
+                        }
+                        ObjectMessage objectMessage = objectMapper.readValue(request, ObjectMessage.class);
+                        value = objectMessage.getObject();
+                        if(serverNode.getListOfObjects().containsValue(value)) {
+                            // have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        if(!value.verifyObject()) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
+                            log.warning(clientLogMsg + "- Object-Message could not be verified!");
+                            break;
+                        }
+
+                        key = computeHash(objectMapper.writeValueAsString(value));
+                        if(serverNode.getListOfObjects().containsKey(key)) {
+                            // have the object
+                            continueWithoutResponse = true;
+                            break;
+                        }
+                        HashMap<String, Object> newObjects = new HashMap<>();
+                        newObjects.put(key,value);
+                        String objectsWereUpdated = serverNode.appendToObjects(newObjects);
+                        if (objectsWereUpdated == null) {
+                            log.severe(clientLogMsg + "- ERROR - objects could not be read from file!");
+                        } else if (objectsWereUpdated.equals("")) {
+                            log.info(clientLogMsg + "- No objects were updated");
+                        } else {
+                            log.info(clientLogMsg + "- Objects were updated : " + objectsWereUpdated);
+                        }
+                        HashMap<String, List<String>> cmds = new HashMap<>();
+                        List<String> params = new ArrayList<>();
+                        params.add(key);
+                        cmds.put(ihaveobject, params);
+                        // TODO: activate
+                        // serverNode.getService().execute(new ClientManagerThread(serverNode, serverNode.getService(), sockets, "broadcast", cmds, log));
+
+                        continueWithoutResponse = true;
                         break;
 
                     case error:
@@ -237,15 +357,48 @@ public class ClientThread extends Thread {
 
                 if (continueWithoutResponse) {
                     log.info(clientLogMsg + "- continuing without response");
+
+                    if(handshakeCompleted && broadcasting && !commandsSent) {
+                        log.info(clientLogMsg + "- begin sending commands: " + commands);
+                        for (Map.Entry<String, List<String>> cmd: commands.entrySet()) {
+                            switch (cmd.getKey()) {
+                                case ihaveobject:
+                                    response = objectMapper.writeValueAsString(new IHaveObjectMessage(ihaveobject, cmd.getValue().get(0)));
+                                    writer.println(response);
+                                    writer.flush();
+                                    log.info(clientLogMsg + "- send:" + response);
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                        log.info(clientLogMsg + "- finished sending commands");
+                    }
+
                     continue;
                 }
 
                 writer.println(response);
                 writer.flush();
                 log.info(clientLogMsg + "- responded: " + response);
-            }
 
-            // TODO: further client commands?
+                if(handshakeCompleted && broadcasting && !commandsSent) {
+                    log.info(clientLogMsg + "- begin sending commands: " + commands);
+                    for (Map.Entry<String, List<String>> cmd: commands.entrySet()) {
+                        switch (cmd.getKey()) {
+                            case ihaveobject:
+                                response = objectMapper.writeValueAsString(new IHaveObjectMessage(ihaveobject, cmd.getValue().get(0)));
+                                writer.println(response);
+                                writer.flush();
+                                log.info(clientLogMsg + "- send:" + response);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                    log.info(clientLogMsg + "- finished sending commands");
+                }
+            }
 
             this.close();
 
