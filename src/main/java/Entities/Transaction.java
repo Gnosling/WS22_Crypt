@@ -156,6 +156,7 @@ public class Transaction implements Object {
 
         // check mandatory fields
         if(type == null || inputs == null || outputs == null) { return false; }
+        if(inputs.size() == 0 || outputs.size() == 0) { return false; }
         for (Input in : inputs) {
             if(in.outpoint == null || in.sig == null || in.outpoint.txid == null) { return false; }
         }
@@ -303,6 +304,6 @@ public class Transaction implements Object {
     }
 
     public boolean isCoinbase() {
-        return (inputs == null || inputs.size() == 0);
+        return (inputs == null);
     }
 }

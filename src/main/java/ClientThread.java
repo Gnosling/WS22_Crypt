@@ -366,12 +366,13 @@ public class ClientThread extends Thread {
                                     response = objectMapper.writeValueAsString(new IHaveObjectMessage(ihaveobject, cmd.getValue().get(0)));
                                     writer.println(response);
                                     writer.flush();
-                                    log.info(clientLogMsg + "- send:" + response);
+                                    log.info(clientLogMsg + "- send: " + response);
                                     break;
                                 default:
                                     break;
                             }
                         }
+                        commandsSent = true;
                         log.info(clientLogMsg + "- finished sending commands");
                     }
 
@@ -390,12 +391,13 @@ public class ClientThread extends Thread {
                                 response = objectMapper.writeValueAsString(new IHaveObjectMessage(ihaveobject, cmd.getValue().get(0)));
                                 writer.println(response);
                                 writer.flush();
-                                log.info(clientLogMsg + "- send:" + response);
+                                log.info(clientLogMsg + "- send: " + response);
                                 break;
                             default:
                                 break;
                         }
                     }
+                    commandsSent = true;
                     log.info(clientLogMsg + "- finished sending commands");
                 }
             }

@@ -85,11 +85,6 @@ public class ObjectMessage {
 //        Object received = objectMapper.readValue(request, Object.class);
         ObjectMessage received = objectMapper.readValue(request, ObjectMessage.class);
 
-        // TODO: object-id in hexstrings
-        // TODO: For this homework, you may consider blocks and coinbase transactions to always be valid
-        // TODO: the message to sign is the transaction body, with all null signatures
-        // TODO: a transaction must have at least 1 input and 1 output, otherwise it is invalid.
-
         System.out.println(objectMapper.writeValueAsString(received));
 //        System.out.println(objectMapper.writeValueAsString(received.getObject()));
         System.out.println(computeHash("{\"height\":1,\"outputs\":[{\"pubkey\":\"62b7c521cd9211579cf70fd4099315643767b96711febaa5c76dc3daf27c281c\",\"value\":50000000000000}],\"type\":\"transaction\"}"));
