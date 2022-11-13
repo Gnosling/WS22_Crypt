@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
+import java.util.HashMap;
+
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
         include = JsonTypeInfo.As.EXISTING_PROPERTY,
@@ -15,7 +17,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 })
 public interface Object {
 
-    boolean verifyObject();
+    boolean verifyObject(HashMap<String, Object> listOfKnownObjects);
     void setType(String block);
     String getType();
     String toJson() throws JsonProcessingException;

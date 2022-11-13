@@ -6,7 +6,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.google.common.io.BaseEncoding;
+import org.bouncycastle.crypto.CryptoException;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 
@@ -20,12 +24,12 @@ public class Transaction implements Object {
 
     private static class Input {
         private static class Outpoint {
-            private long index;
+            private int index;
             private String txid;
 
             public Outpoint() {}
 
-            public Outpoint(String txid, long index) {
+            public Outpoint(String txid, int index) {
                 this.txid = txid;
                 this.index = index;
             }
@@ -51,7 +55,7 @@ public class Transaction implements Object {
                 return index;
             }
 
-            public void setIndex(long index) {
+            public void setIndex(int index) {
                 this.index = index;
             }
         }
@@ -142,11 +146,76 @@ public class Transaction implements Object {
         this.outputs = outputs;
     }
 
-    public boolean verifyObject(){
+    public boolean verifyObject(HashMap<String, Object> listOfKnownObjects){
         if(isCoinbase()) {
             return true;
         }
-        // TODO: implement
+
+        long inputValue = 0;
+        long outputValue = 0;
+
+        // check mandatory fields
+        if(type == null || inputs == null || outputs == null) { return false; }
+        for (Input in : inputs) {
+            if(in.outpoint == null || in.sig == null || in.outpoint.txid == null) { return false; }
+        }
+        for (Output out : outputs) {
+            if(out.pubkey == null) { return false; }
+        }
+
+        // check value
+        // check pubKey
+        for (Output out : this.outputs) {
+            try {
+                byte[] pubBytes = BaseEncoding.base16().decode(out.pubkey.toUpperCase());
+                if(pubBytes.length != 32) {
+                    return false;
+                }
+                if(out.value < 0) {
+                    return false;
+                }
+                outputValue += out.value;
+            } catch (IllegalArgumentException | NullPointerException e) {
+                // pubkey is wrong
+                return false;
+            }
+        }
+
+        // check outpoint
+        // check signature
+        for (Input in : this.inputs) {
+            Object prevObject = listOfKnownObjects.get(in.outpoint.txid);
+            if(prevObject == null || !(prevObject instanceof Transaction)) {
+                // don't have the object
+                return false;
+            }
+            Transaction prevTx = (Transaction) prevObject;
+            if(in.outpoint.index >= (prevTx.outputs.size())) {
+                // index outside outputs
+                return false;
+            }
+
+            Transaction signableTx = this.clone();
+            signableTx.setSignatureToNull();
+            String signableString = "";
+            try { signableString = signableTx.toJson(); } catch (JsonProcessingException e) { return false; }
+
+            boolean verifiedSignature = false;
+            try { verifiedSignature = Util.Util.verifySignature(prevTx.outputs.get(in.outpoint.index).pubkey, signableString, in.sig);
+            } catch (CryptoException | NullPointerException e) { return false; }
+            if(!verifiedSignature) {
+                // signature failed
+                return false;
+            }
+            inputValue += prevTx.outputs.get(in.outpoint.index).value;
+        }
+
+        // check conservation
+        if(inputValue < outputValue) {
+            return false;
+        }
+
+        // otw. everything fine
         return true;
     }
 
@@ -172,10 +241,33 @@ public class Transaction implements Object {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Transaction that = (Transaction) o;
-        return type == null ? that.type == null : type.equals(that.type)
-                && height == that.height
-                && inputs == null ? that.inputs == null : inputs.equals(that.inputs)
-                && outputs == null ? that.outputs == null : outputs.equals(that.outputs);
+        boolean one = type == null ? that.type == null : type.equals(that.type);
+        boolean two = height == that.height;
+        boolean three = inputs == null ? that.inputs == null : inputs.equals(that.inputs);
+        boolean four = outputs == null ? that.outputs == null : outputs.equals(that.outputs);
+        return one && three && two && four;
+//        return type == null ? that.type == null : type.equals(that.type)
+//                && height == that.height
+//                && inputs == null ? that.inputs == null : inputs.equals(that.inputs)
+//                && outputs == null ? that.outputs == null : outputs.equals(that.outputs);
+    }
+
+    @Override
+    public Transaction clone() {
+        Transaction newTx = new Transaction();
+        newTx.setType(type);
+        newTx.setHeight(height);
+        List<Input> newInputs = new ArrayList<>();
+        for (Input in : inputs) {
+            newInputs.add(new Input(new Input.Outpoint(in.outpoint.txid, in.outpoint.index), in.sig));
+        }
+        newTx.setInputs(newInputs);
+        List<Output> newOutputs = new ArrayList<>();
+        for (Output out : outputs) {
+            newOutputs.add(new Output(out.pubkey, out.value));
+        }
+        newTx.setOutputs(newOutputs);
+        return newTx;
     }
 
     public String getType() {
@@ -211,6 +303,6 @@ public class Transaction implements Object {
     }
 
     public boolean isCoinbase() {
-        return inputs == null;
+        return (inputs == null || inputs.size() == 0);
     }
 }

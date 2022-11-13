@@ -287,7 +287,7 @@ public class ServerListenerThread extends Thread {
                             continueWithoutResponse = true;
                             break;
                         }
-                        if(!value.verifyObject()) {
+                        if(!value.verifyObject(serverNode.getListOfObjects())) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
                             log.warning("Object-Message could not be verified!");
@@ -315,7 +315,7 @@ public class ServerListenerThread extends Thread {
                         params.add(key);
                         cmds.put(ihaveobject, params);
                         // TODO: activate
-//                        service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                        service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
 
                         continueWithoutResponse = true;
                         break;

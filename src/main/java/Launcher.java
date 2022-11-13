@@ -1,7 +1,9 @@
 import Entities.Object;
 import Util.Util;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import javax.swing.text.html.parser.Entity;
+import java.security.Security;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -19,6 +21,8 @@ public class Launcher {
         String versionOfNode = "1.5";
         List<String> listOfDiscoveredPeers = Util.readPeersOfPersistentFile(fileNameOfStoredPeers);
         HashMap<String,Object> listOfObjects = Util.readObjectsOfPersistentFile(fileNameOfStoredObjects);
+
+        Security.addProvider(new BouncyCastleProvider());
 
         Logger log = Logger.getLogger("logger");
 

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 
+import java.util.HashMap;
 import java.util.List;
 
 
@@ -49,7 +50,7 @@ public class Block implements Object {
         this.note = note;
     }
 
-    public boolean verifyObject(){
+    public boolean verifyObject(HashMap<String, Object> listOfKnownObjects){
         // TODO: implement
         return true;
     }
