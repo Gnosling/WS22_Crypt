@@ -32,7 +32,9 @@ public class ClientManagerThread extends Thread {
         log.info(clientManagerLogMsg + "launched with mode:" + mode + "; cmds: " + commands);
 
         // it now tries to connect to all peers (ie. broadcast)
-        for (String peer : serverNode.getListOfDiscoveredPeers()) {
+        List<String> peers = new ArrayList<>(serverNode.getListOfDiscoveredPeers());
+        // Do it in two steps
+        for (String peer : peers) {
 
             if (Thread.currentThread().isInterrupted()) {
                 break;
