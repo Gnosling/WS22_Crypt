@@ -148,76 +148,114 @@ public class Transaction implements Object {
 
     public boolean verifyObject(HashMap<String, Object> listOfKnownObjects){
         if(isCoinbase()) {
+            // TODO: implement!
+            // TODO: output must be exactly 50*10^12 picaker
+
+            // check mandatory fields
+            if (inputs != null || outputs == null || height <= 0) {
+                return false;
+            }
+
+            // check output
+            if (outputs.size() != 1) { return false; }
+            Output out = outputs.get(0);
+            byte[] pubBytes = BaseEncoding.base16().decode(out.pubkey.toUpperCase());
+            if (pubBytes.length != 32) {
+                return false;
+            }
+            if (out.value != 50 * Math.pow(10,12)) {
+                return false;
+            }
+
+            // otw. everything fine
+            return true;
+
+
+        } else {
+
+            long inputValue = 0;
+            long outputValue = 0;
+
+            // check mandatory fields
+            if (type == null || inputs == null || outputs == null) {
+                return false;
+            }
+            if (inputs.size() == 0 || outputs.size() == 0) {
+                return false;
+            }
+            for (Input in : inputs) {
+                if (in.outpoint == null || in.sig == null || in.outpoint.txid == null) {
+                    return false;
+                }
+            }
+            for (Output out : outputs) {
+                if (out.pubkey == null) {
+                    return false;
+                }
+            }
+
+            // check value
+            // check pubKey
+            for (Output out : this.outputs) {
+                try {
+                    byte[] pubBytes = BaseEncoding.base16().decode(out.pubkey.toUpperCase());
+                    if (pubBytes.length != 32) {
+                        return false;
+                    }
+                    if (out.value < 0) {
+                        return false;
+                    }
+                    outputValue += out.value;
+                } catch (IllegalArgumentException | NullPointerException e) {
+                    // pubkey is wrong
+                    return false;
+                }
+            }
+
+            // check outpoint
+            // check signature
+            for (Input in : this.inputs) {
+                Object prevObject = listOfKnownObjects.get(in.outpoint.txid);
+                if (prevObject == null || !(prevObject instanceof Transaction)) {
+                    // don't have the object
+                    return false;
+                }
+                Transaction prevTx = (Transaction) prevObject;
+                if (in.outpoint.index >= (prevTx.outputs.size())) {
+                    // index outside outputs
+                    return false;
+                }
+
+                Transaction signableTx = this.clone();
+                signableTx.setSignatureToNull();
+                String signableString = "";
+                try {
+                    signableString = signableTx.toJson();
+                } catch (JsonProcessingException e) {
+                    return false;
+                }
+
+                boolean verifiedSignature = false;
+                try {
+                    verifiedSignature = Util.Util.verifySignature(prevTx.outputs.get(in.outpoint.index).pubkey, signableString, in.sig);
+                } catch (CryptoException | NullPointerException e) {
+                    return false;
+                }
+                if (!verifiedSignature) {
+                    // signature failed
+                    return false;
+                }
+                inputValue += prevTx.outputs.get(in.outpoint.index).value;
+            }
+
+            // check conservation
+            if (inputValue < outputValue) {
+                return false;
+            }
+
+            // otw. everything fine
             return true;
         }
-
-        long inputValue = 0;
-        long outputValue = 0;
-
-        // check mandatory fields
-        if(type == null || inputs == null || outputs == null) { return false; }
-        if(inputs.size() == 0 || outputs.size() == 0) { return false; }
-        for (Input in : inputs) {
-            if(in.outpoint == null || in.sig == null || in.outpoint.txid == null) { return false; }
-        }
-        for (Output out : outputs) {
-            if(out.pubkey == null) { return false; }
-        }
-
-        // check value
-        // check pubKey
-        for (Output out : this.outputs) {
-            try {
-                byte[] pubBytes = BaseEncoding.base16().decode(out.pubkey.toUpperCase());
-                if(pubBytes.length != 32) {
-                    return false;
-                }
-                if(out.value < 0) {
-                    return false;
-                }
-                outputValue += out.value;
-            } catch (IllegalArgumentException | NullPointerException e) {
-                // pubkey is wrong
-                return false;
-            }
-        }
-
-        // check outpoint
-        // check signature
-        for (Input in : this.inputs) {
-            Object prevObject = listOfKnownObjects.get(in.outpoint.txid);
-            if(prevObject == null || !(prevObject instanceof Transaction)) {
-                // don't have the object
-                return false;
-            }
-            Transaction prevTx = (Transaction) prevObject;
-            if(in.outpoint.index >= (prevTx.outputs.size())) {
-                // index outside outputs
-                return false;
-            }
-
-            Transaction signableTx = this.clone();
-            signableTx.setSignatureToNull();
-            String signableString = "";
-            try { signableString = signableTx.toJson(); } catch (JsonProcessingException e) { return false; }
-
-            boolean verifiedSignature = false;
-            try { verifiedSignature = Util.Util.verifySignature(prevTx.outputs.get(in.outpoint.index).pubkey, signableString, in.sig);
-            } catch (CryptoException | NullPointerException e) { return false; }
-            if(!verifiedSignature) {
-                // signature failed
-                return false;
-            }
-            inputValue += prevTx.outputs.get(in.outpoint.index).value;
-        }
-
-        // check conservation
-        if(inputValue < outputValue) {
-            return false;
-        }
-
-        // otw. everything fine
-        return true;
     }
 
     @Override
@@ -269,6 +307,15 @@ public class Transaction implements Object {
         }
         newTx.setOutputs(newOutputs);
         return newTx;
+    }
+
+    public boolean usesIdAsInput(String id) {
+        for (Input in : inputs) {
+            if (in.outpoint.txid.equals(id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String getType() {
