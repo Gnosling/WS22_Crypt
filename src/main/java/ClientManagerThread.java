@@ -33,8 +33,19 @@ public class ClientManagerThread extends Thread {
 
         // it now tries to connect to all peers (ie. broadcast)
         List<String> peers = new ArrayList<>(serverNode.getListOfDiscoveredPeers());
-        // Do it in two steps
+        List<String> graders = new ArrayList<>();
+        List<String> nonGraders = new ArrayList<>();
+
         for (String peer : peers) {
+            if (peer.startsWith("128.130.122.101")) {
+                graders.add(peer);
+            } else {
+                nonGraders.add(peer);
+            }
+        }
+
+        // prioritize graders
+        for (String grader : graders) {
 
             if (Thread.currentThread().isInterrupted()) {
                 break;
@@ -42,21 +53,48 @@ public class ClientManagerThread extends Thread {
 
             try {
                 // start new ClientThread
-                String[] parts = peer.split(":");
+                String[] parts = grader.split(":");
                 if (parts.length < 2) {
-                    log.warning(clientManagerLogMsg + "peer could not be parsed: " + peer);
+                    log.warning(clientManagerLogMsg + "grader could not be parsed: " + grader);
                     continue;
                 }
                 int port = Integer.valueOf(parts[parts.length - 1]);
-                String host = peer.substring(0, peer.lastIndexOf(":"));
+                String host = grader.substring(0, grader.lastIndexOf(":"));
 
-                log.info(clientManagerLogMsg + "starting connection to peer: " + peer);
+                log.info(clientManagerLogMsg + "starting connection to grader: " + grader);
                 service.execute(new ClientThread(host, port, serverNode, sockets, commands, log));
 
 
             } catch (Exception e) {
                 log.warning(clientManagerLogMsg + "was terminated due to exception: " + e);
             }
+        }
+
+        int counter = 0;
+        for (String nonGrader : nonGraders) {
+
+            if (Thread.currentThread().isInterrupted() || counter > 1500) {
+                break;
+            }
+
+            try {
+                // start new ClientThread
+                String[] parts = nonGrader.split(":");
+                if (parts.length < 2) {
+                    log.warning(clientManagerLogMsg + "nonGrader could not be parsed: " + nonGrader);
+                    continue;
+                }
+                int port = Integer.valueOf(parts[parts.length - 1]);
+                String host = nonGrader.substring(0, nonGrader.lastIndexOf(":"));
+
+                log.info(clientManagerLogMsg + "starting connection to nonGrader: " + nonGrader);
+                service.execute(new ClientThread(host, port, serverNode, sockets, commands, log));
+
+
+            } catch (Exception e) {
+                log.warning(clientManagerLogMsg + "was terminated due to exception: " + e);
+            }
+            counter++;
         }
     }
 }

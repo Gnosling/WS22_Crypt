@@ -1,3 +1,4 @@
+import Entities.Block;
 import Entities.Object;
 import Entities.Transaction;
 import Util.TransactionSerializer;
@@ -47,7 +48,7 @@ public class ServerListenerThread extends Thread {
             socket = serverSocket.accept();
             sockets.add(socket);
             service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets, log));
-            socket.setSoTimeout(1000*90); // terminate after 90s
+            socket.setSoTimeout(1000*10); // terminate after 10s
             log.info("Connected to new client: " + socket.getInetAddress());
 
             // prepare the input reader for the socket
@@ -287,19 +288,65 @@ public class ServerListenerThread extends Thread {
                             continueWithoutResponse = true;
                             break;
                         }
+
+                        if (value instanceof Block) {
+                            Block block = (Block) value;
+                            List<String> unknownTxs = block.getUnknownTransaction(serverNode.getListOfObjects());
+                            if (!unknownTxs.isEmpty()) {
+                                HashMap<String, List<String>> cmds = new HashMap<>();
+                                for (String unknownTx : unknownTxs) {
+                                    List<String> params = new ArrayList<>();
+                                    params.add(unknownTx);
+                                    cmds.put(getobject, params);
+                                }
+                                // TODO: activate
+                                service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                                try {
+                                    Thread.sleep(1000*2 + 500); // wait 2.5 seconds
+                                } catch (Exception e) {
+
+                                }
+                            }
+                        }
+
                         if(!value.verifyObject(serverNode.getListOfObjects())) {
                             badRequest = true;
                             response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
                             log.warning("Object-Message could not be verified!");
                             break;
                         }
-
                         key = computeHash(objectMapper.writeValueAsString(value));
                         if(serverNode.getListOfObjects().containsKey(key)) {
                             // have the object
                             continueWithoutResponse = true;
                             break;
                         }
+
+                        if (value instanceof Block) {
+                            Block block = (Block) value;
+
+                            try {
+                                boolean UTXOrespected = block.updateAndCheckUTXO(serverNode.getListOfObjects());
+                                if (!UTXOrespected) {
+                                    badRequest = true;
+                                    response = objectMapper.writeValueAsString(new ErrorMessage(error, "Transactions of this block violate the UTXO!"));
+                                    log.warning("Transactions of this block violate the UTXO!");
+                                    break;
+                                }
+                                String utxoWasUpdated =  serverNode.appendToUTXOForNewHash(key, block.getThisUTXO());
+                                if (utxoWasUpdated == null || utxoWasUpdated.equals("")) {
+                                    log.severe("No utxo was updated");
+                                } else {
+                                    log.info(utxoWasUpdated);
+                                }
+                            } catch (Exception e) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Transactions of this block violate the UTXO!"));
+                                log.warning("Transactions of this block violate the UTXO!");
+                                break;
+                            }
+                        }
+
                         HashMap<String, Object> newObjects = new HashMap<>();
                         newObjects.put(key,value);
                         String objectsWereUpdated = serverNode.appendToObjects(newObjects);
@@ -314,7 +361,7 @@ public class ServerListenerThread extends Thread {
                         List<String> params = new ArrayList<>();
                         params.add(key);
                         cmds.put(ihaveobject, params);
-                        // TODO: activate
+                        // TODO: reavtivate
                         service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
 
                         continueWithoutResponse = true;
@@ -337,6 +384,7 @@ public class ServerListenerThread extends Thread {
                     if (response == null || !response.contains(error)) {
                         response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unsupported message type received!"));
                     }
+                    log.info("[responded]: " + response);
                     writer.println(response);
                     writer.flush();
                     break;

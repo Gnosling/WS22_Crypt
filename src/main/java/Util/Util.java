@@ -1,23 +1,18 @@
 package Util;
 
+import Entities.Block;
 import Entities.Object;
 import Entities.Transaction;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import org.bouncycastle.crypto.CryptoException;
 import org.bouncycastle.crypto.Signer;
-import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
-import org.bouncycastle.crypto.util.OpenSSHPublicKeyUtil;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.io.*;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.security.Security;
 import java.util.*;
 
 public class Util {
@@ -30,21 +25,14 @@ public class Util {
     public static final String ihaveobject = "ihaveobject";
     public static final String object = "object";
 
+    public static final String hashIdOfGenesisBlock = "00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e";
+
 
     public static boolean isJson(String json) {
         ObjectMapper mapper = new ObjectMapper();
         try {
             mapper.readTree(json);
         } catch (IOException e) {
-            return false;
-        }
-        return true;
-    }
-
-    public static boolean isConnectableAddress(String host, int port) {
-        try {
-            Socket socket = new Socket(host, port);
-        } catch (Exception e) {
             return false;
         }
         return true;
@@ -118,7 +106,7 @@ public class Util {
         }
     }
 
-    public static HashMap<String, Object> readObjectsOfPersistentFile(String fileName) {
+    public static HashMap<String, Object> readObjectsOfPersistentFile(String fileName, String fileNameOfStoredUTXOs) {
         BufferedReader reader = null;
         ObjectMapper objectMapper = new ObjectMapper();
         HashMap<String, Object> objects = new HashMap<>();
@@ -133,7 +121,14 @@ public class Util {
                         String body = line.substring(key.length()+1).trim();
                         if(isJson(body)) {
                             Object object = objectMapper.readValue(body, Object.class);
-                            objects.put(key, object);
+                            if (object instanceof Block) {
+                                Block block = (Block) object;
+                                HashMap<String, List<ContainerOfUTXO>> utxo = readUTXOOfPersistentFileForHashOfBlock(fileNameOfStoredUTXOs, key);
+                                block.setUTXO(utxo);
+                                objects.put(key, block);
+                            } else {
+                                objects.put(key, object);
+                            }
                         }
                     }
                 }
@@ -163,5 +158,95 @@ public class Util {
         } catch (IOException exception) {
             return false;
         }
+    }
+
+    public static HashMap<String, List<ContainerOfUTXO>> readUTXOOfPersistentFileForHashOfBlock(String fileName, String blockHash) {
+        BufferedReader reader = null;
+        HashMap<String, List<ContainerOfUTXO>> utxo = new HashMap<>();
+        try {
+            reader = new BufferedReader(new FileReader(fileName));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if(!line.equals("")) {
+                    String[] parts = line.split("~");
+                    String key = parts[0].trim();
+                    if (!key.equals(blockHash)) {
+                        continue;
+                    }
+
+                    if (parts.length == 1) {
+                        reader.close();
+                        return utxo;
+                    } else if (parts.length >= 2){
+                        if (parts[1].trim().equals("")) {
+                            reader.close();
+                            return utxo; // there are no entries
+                        }
+                        String body = line.substring(key.length()+1).trim(); //txHash~(index, flag);(i,f);(i,f)#txHash~(...);(...)
+                        String[] txsWithUnspentOutput = body.split("#");
+
+                        for (String entry : txsWithUnspentOutput) {
+                            if (entry.equals("")) {
+                                continue;
+                            }
+
+                            String txHash = entry.substring(0, entry.indexOf("~"));
+                            String innerBody = entry.substring(txHash.length()+1).trim();
+                            String[] pairs = innerBody.split(";");
+                            List<ContainerOfUTXO> containerList = new ArrayList<>();
+
+                            for (String pair : pairs) {
+                                pair = pair.trim();
+                                if (pair.equals("")) {
+                                    continue;
+                                }
+                                pair = pair.substring(1, pair.length() - 1); // remove bracket
+                                int index = Integer.parseInt(pair.substring(0, pair.indexOf(",")));
+                                boolean flag = Boolean.parseBoolean(pair.substring(pair.indexOf(",") + 1));
+                                containerList.add(new ContainerOfUTXO(index, flag));
+                            }
+                            utxo.put(txHash, containerList);
+                        }
+                        reader.close();
+                        return utxo;
+                    }
+                }
+            }
+            reader.close();
+            return utxo;
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    public static boolean appendUTXOOnPersistentFileForHashOfBlock(String fileName, String blockHash, HashMap<String, List<ContainerOfUTXO>> utxo) {
+        BufferedWriter writer = null;
+        try {
+            writer = new BufferedWriter(new FileWriter(fileName, true));
+            StringBuilder body = new StringBuilder();
+            for (Map.Entry<String, List<ContainerOfUTXO>> elem : utxo.entrySet()) {
+                StringBuilder containerList = new StringBuilder();
+                for (ContainerOfUTXO con : elem.getValue()) {
+                    containerList.append("(" + con.getIndex() + "," + con.getIsUnspent() + ");");
+                }
+                body.append(elem.getKey() + "~" + containerList + "#");
+            }
+            writer.write(blockHash + "~" + body);
+            writer.newLine();
+            writer.close();
+            return true;
+
+        } catch (IOException exception) {
+            return false;
+        }
+    }
+
+    public static void main(String[] args) {
+        byte[] messageAsBytes = "a26d92800cf58e88a5ecf37156c031a4147c2128beeaf1cca2785c93242a4c8b".getBytes(StandardCharsets.UTF_8);
+        Object o = new Transaction();
+        List<Long> s = new ArrayList<>();
+        s.add(Long.valueOf(0)); s.add(12L);
+        int i = 0;
+
     }
 }

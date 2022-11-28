@@ -14,18 +14,24 @@ public class Launcher {
     public static final String fileNameOfStoredPeers = "peers.txt";
     public static final String fileNameOfStoredObjects = "objects.txt";
 
+    public static final String fileNameOfStoredUTXOs = "utxos.txt";
+
     public static void main(String[] args) {
         int PORT = 18018;
         String IP_ADDRESS = "139.59.159.65";
         String name = "not node, hot implode";
-        String versionOfNode = "1.5";
+        String versionOfNode = "2.5";
         List<String> listOfDiscoveredPeers = Util.readPeersOfPersistentFile(fileNameOfStoredPeers);
-        HashMap<String,Object> listOfObjects = Util.readObjectsOfPersistentFile(fileNameOfStoredObjects);
+        HashMap<String,Object> listOfObjects = Util.readObjectsOfPersistentFile(fileNameOfStoredObjects, fileNameOfStoredUTXOs);
 
         Security.addProvider(new BouncyCastleProvider());
 
         Logger log = Logger.getLogger("logger");
 
+        if (listOfObjects == null) {
+            log.severe("ERROR - objects could not be read from file!");
+            System.exit(-1);
+        }
         if (listOfDiscoveredPeers == null) {
             log.severe("ERROR - peers could not be read from file!");
             System.exit(-1);

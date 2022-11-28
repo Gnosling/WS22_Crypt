@@ -1,5 +1,6 @@
 import Entities.Object;
 import Util.Util;
+import Util.ContainerOfUTXO;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,6 +17,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+
+import static Util.Util.appendUTXOOnPersistentFileForHashOfBlock;
 
 public class ServerNode {
 
@@ -45,14 +48,15 @@ public class ServerNode {
 
     public void launch() {
         log.info("launching ...");
-        service = Executors.newFixedThreadPool(50);
+        service = Executors.newFixedThreadPool(150);
 
         try {
             serverSocket = new ServerSocket(PORT);
             this.serverAddress = IP_ADDRESS + ":" + PORT;
 
             service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
-//            service.execute(new ClientManagerThread(this, service, sockets, log));
+            HashMap<String, List<String>> cmds = new HashMap<>();
+//            service.execute(new ClientManagerThread(this, service, sockets, "", cmds, log));
             log.info("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
@@ -210,7 +214,7 @@ public class ServerNode {
 
     public synchronized String appendToObjects(HashMap<String, Object> receivedObjects) {
         String updatedInfo = "";
-        HashMap<String, Object> knownObjects = Util.readObjectsOfPersistentFile(Launcher.fileNameOfStoredObjects);
+        HashMap<String, Object> knownObjects = Util.readObjectsOfPersistentFile(Launcher.fileNameOfStoredObjects, Launcher.fileNameOfStoredUTXOs);
         HashMap<String, Object> newObjects = new HashMap<>();
         if (knownObjects == null) {
             return null;
@@ -228,6 +232,16 @@ public class ServerNode {
             Util.appendObjectsOnPersistentFile(newObjects, Launcher.fileNameOfStoredObjects);
         }
 
+        return updatedInfo;
+    }
+
+    // assumes validation and everything was done beforehand
+    public synchronized String appendToUTXOForNewHash(String hashOfBlock, HashMap<String, List<ContainerOfUTXO>> utxo) {
+
+        String updatedInfo = "";
+        if (appendUTXOOnPersistentFileForHashOfBlock(Launcher.fileNameOfStoredUTXOs, hashOfBlock, utxo)) {
+            updatedInfo = "new UTXO for block " + hashOfBlock;
+        }
         return updatedInfo;
     }
 

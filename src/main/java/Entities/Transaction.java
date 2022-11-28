@@ -22,8 +22,8 @@ import java.util.Objects;
 //})
 public class Transaction implements Object {
 
-    private static class Input {
-        private static class Outpoint {
+    public static class Input {
+        public static class Outpoint {
             private int index;
             private String txid;
 
@@ -96,7 +96,7 @@ public class Transaction implements Object {
         }
     }
 
-    private static class Output {
+    public static class Output {
         private String pubkey;
         private long value;
 
@@ -148,11 +148,9 @@ public class Transaction implements Object {
 
     public boolean verifyObject(HashMap<String, Object> listOfKnownObjects){
         if(isCoinbase()) {
-            // TODO: implement!
-            // TODO: output must be exactly 50*10^12 picaker
 
             // check mandatory fields
-            if (inputs != null || outputs == null || height <= 0) {
+            if (inputs != null || outputs == null || height < 0) {
                 return false;
             }
 
@@ -163,8 +161,8 @@ public class Transaction implements Object {
             if (pubBytes.length != 32) {
                 return false;
             }
-            if (out.value != 50 * Math.pow(10,12)) {
-                return false;
+            if (out.value < 50 * Math.pow(10,12)) {
+                return false; // this is the lower bound, upper bound will be checked by block validation
             }
 
             // otw. everything fine
@@ -220,6 +218,10 @@ public class Transaction implements Object {
                     // don't have the object
                     return false;
                 }
+                if (!(prevObject instanceof Transaction)) {
+                    return false;
+                }
+
                 Transaction prevTx = (Transaction) prevObject;
                 if (in.outpoint.index >= (prevTx.outputs.size())) {
                     // index outside outputs
@@ -318,6 +320,45 @@ public class Transaction implements Object {
         return false;
     }
 
+    /**
+     * The fee of a transaction is the sum of its input values minus the sum of its output values
+     * @return fee if all ok, returns -1 if there was an error (tx should be validated beforehand)
+     */
+    public long getFeeOfTransaction(HashMap<String, Object> listOfKnownObjects) {
+
+        if (isCoinbase()) {
+            return -1;
+        }
+
+        long sumOfInputValues = 0;
+        for (Input in : this.inputs) {
+            Object prevObject = listOfKnownObjects.get(in.outpoint.txid);
+            if (prevObject == null || !(prevObject instanceof Transaction)) {
+                // don't have the object
+                return -1;
+            }
+
+            Transaction prevTx = (Transaction) prevObject;
+            if (in.outpoint.index >= (prevTx.outputs.size())) {
+                // index outside outputs
+                return -1;
+            }
+
+            sumOfInputValues += prevTx.outputs.get(in.outpoint.index).getValue();
+        }
+
+        long sumOfOutputValues = 0;
+        for (Output out: outputs) {
+            sumOfOutputValues += out.getValue();
+        }
+
+        if (sumOfOutputValues > sumOfInputValues) {
+            return -1;
+        }
+
+        return sumOfInputValues - sumOfOutputValues;
+    }
+
     public String getType() {
         return type;
     }
@@ -352,5 +393,12 @@ public class Transaction implements Object {
 
     public boolean isCoinbase() {
         return (inputs == null);
+    }
+
+    public long getValueOfCoinbase() {
+        if (!isCoinbase()) {
+            return -1;
+        }
+        return outputs.get(0).getValue();
     }
 }

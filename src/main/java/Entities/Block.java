@@ -1,7 +1,10 @@
 package Entities;
 
+import Util.ContainerOfUTXO;
 import Util.TransactionSerializer;
+import Util.Util;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -11,12 +14,15 @@ import com.google.common.io.BaseEncoding;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static Util.Util.computeHash;
 
 
+@JsonIgnoreProperties({"UTXO", "genesis"})
 public class Block implements Object {
 
     private String type;
@@ -36,9 +42,7 @@ public class Block implements Object {
     private String note;
 
     @JsonIgnore
-    private String UTXO; // TODO: store for txHash for each output how many coins are left, HashMap <hash, <out-index, unspent-coins>>;
-    // TODO: 1. check all TXs to take value less then unspent (for each input take id and index), otw invalid
-    // TODO: 2. if everything ok, then remove 0 unspents and add outputs of all txs of the block
+    private HashMap<String, List<ContainerOfUTXO>> UTXO;
 
     public Block() {
     }
@@ -61,25 +65,42 @@ public class Block implements Object {
         this.note = note;
     }
 
+    public Block(String type, List<String> txids, String nonce, String previd, long created, String t, String miner, String note, HashMap<String, List<ContainerOfUTXO>> UTXO) {
+        this.type = type;
+        this.txids = txids;
+        this.nonce = nonce;
+        this.previd = previd;
+        this.created = created;
+        this.t = t;
+        this.miner = miner;
+        this.note = note;
+        this.UTXO = UTXO;
+    }
+
+    // fetches unknown transactions of that block
+    public List<String> getUnknownTransaction(HashMap<String, Object> listOfKnownObjects) {
+        List<String> unknownHashs = new ArrayList<>();
+        for (String txID : txids) {
+            if (!listOfKnownObjects.containsKey(txID)) {
+                unknownHashs.add(txID);
+            }
+        }
+        return unknownHashs;
+    }
+
     public boolean verifyObject(HashMap<String, Object> listOfKnownObjects){
-        // TODO: implement
-        // TODO: [X] miner and note are optinal  and <= 128 chars
-        // TODO: [X] nonce is 32-bytes (like hash?)
-        // TODO: created is integer UNIX timestamp in seconds, later than all its pred but not after currenttime
-        // TODO: [X] T is 32-byte hex integer and always the same
-        // TODO: [X] block hash < T
-        // TODO: only genesis has null als previd, others need hash of pred
-        // TODO: [X] if coinbase tx, dann muss es erste sein in txids und sein height muss die höhe des blocks sein? --> genesis has height 0, it's the index of the chain! --> height nicht part von dem teil!
-        // TODO: exclude genesis block!
-        // TODO: after good verification update transactions into UTFX!
+        // TODO: created is integer UNIX timestamp in seconds, later than all its pred but not after currenttime --> not this task
 
         ObjectMapper objectMapper = new ObjectMapper();
         SimpleModule module = new SimpleModule();
         module.addSerializer(Transaction.class, new TransactionSerializer());
         objectMapper.registerModule(module);
+        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
 
         // case genesis block
-        // TODO: implement
+        if (isGenesis()) {
+            return true; // genesis is always valid
+        }
 
         // check mandatory fields
         if (type == null || nonce == null || previd == null || created == 0 || t == null || txids == null || txids.isEmpty()) {
@@ -97,10 +118,9 @@ public class Block implements Object {
 
 
         // check proof-of-work
-        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
         String hash = "";
         try {
-            hash = computeHash(objectMapper.writeValueAsString(this));
+            hash = computeHash(this.toJson());
         } catch (IOException ioException) {
             return false;
         }
@@ -109,9 +129,17 @@ public class Block implements Object {
         }
 
 
-        // check chain of block (and get block height; and check created) TODO: not yet in this task?
+        // check chain of block (and get block height; and check created) TODO: not yet in this task!
         //      long currentTime = Instant.now().getEpochSecond()
 
+        if (!listOfKnownObjects.containsKey(previd)) {
+            return false;
+        }
+
+        Object obj = listOfKnownObjects.get(previd);
+        if (!(obj instanceof Block)) {
+            return false;
+        }
 
         // check transactions of block
         boolean first = true;
@@ -119,12 +147,11 @@ public class Block implements Object {
         for (String txID : txids) {
 
             if (!listOfKnownObjects.containsKey(txID)) {
-                // TODO: If not known, then send a "getobject" message to your peers in order to get the transaction!!
                 return false;
             }
 
-            Object obj = listOfKnownObjects.get(txID);
-            if (!obj.getClass().getName().equals("Entities.Transaction")) {
+            obj = listOfKnownObjects.get(txID);
+            if (!(obj instanceof Transaction)) {
                 return false;
             }
             Transaction tx = (Transaction) obj;
@@ -143,35 +170,132 @@ public class Block implements Object {
 
 
         // check that coinbase is not spent in another transaction in the same block
-        String coinbaseHash = "";
-        try {
-            coinbaseHash = computeHash(objectMapper.writeValueAsString(coinbaseTx));
-        } catch (IOException ioException) {
-            return false;
-        }
-        for (String txID : txids) {
-            Object obj = listOfKnownObjects.get(txID);
-            if (!obj.getClass().getName().equals("Entities.Transaction")) {
+        // and also that coinbase value is not larger than block reward plus the fees
+        if (coinbaseTx != null) {
+            String coinbaseHash = "";
+            long sumOfFees = 0;
+            try {
+                coinbaseHash = computeHash(objectMapper.writeValueAsString(coinbaseTx));
+            } catch (IOException ioException) {
                 return false;
             }
-            Transaction tx = (Transaction) obj;
-            if (tx.isCoinbase()) {
-                continue;
+            for (String txID : txids) {
+                obj = listOfKnownObjects.get(txID);
+                if (!(obj instanceof Transaction)) {
+                    return false;
+                }
+                Transaction tx = (Transaction) obj;
+                if (tx.isCoinbase()) {
+                    continue;
+                }
+                sumOfFees += tx.getFeeOfTransaction(listOfKnownObjects);
+                if (tx.usesIdAsInput(coinbaseHash)) {
+                    return false;
+                }
             }
-            if (tx.usesIdAsInput(coinbaseHash)) {
+
+            if (coinbaseTx.getValueOfCoinbase() < 50 * Math.pow(10, 12)
+                    || coinbaseTx.getValueOfCoinbase() > (50 * Math.pow(10, 12) + sumOfFees)) {
                 return false;
             }
         }
+
 
         return true;
     }
 
-    public boolean updateAndCheckUTXO(HashMap<String, Object> listOfKnownObjects) {
+    /**
+     * validates the UTXO-stuff, must be called after normal validation
+     * @param listOfKnownObjects
+     * @return
+     */
+    public boolean updateAndCheckUTXO(HashMap<String, Object> listOfKnownObjects) throws Exception {
+
+        // case: genesis
+        if (isGenesis()) {
+            UTXO = new HashMap<>();
+            return true;
+        }
 
         // initialize UTXO
+        Block prev = (Block) listOfKnownObjects.get(previd);
+        UTXO = prev.getDeepCopyUTXO();
 
+        ObjectMapper objectMapper = new ObjectMapper();
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Transaction.class, new TransactionSerializer());
+        objectMapper.registerModule(module);
+        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
 
         // check that each transaction is using inputs from UTXO
+        // note: first-come first-served of tx
+        for (String txID : txids) {
+            Transaction tx  = (Transaction) listOfKnownObjects.get(txID);
+
+            // validate tx
+            if (!tx.verifyObject(listOfKnownObjects)) {
+                return false;
+            }
+
+            if (!tx.isCoinbase()) {
+                // Each input corresponds to unspent entry in the UTXO
+                for (Transaction.Input in : tx.getInputs()) {
+                    Transaction.Input.Outpoint elem = in.getOutpoint();
+                    if (!UTXO.containsKey(elem.getTxid())) {
+                        return false; // unknown input
+                    }
+                    List<ContainerOfUTXO> conList = UTXO.get(elem.getTxid());
+                    if (conList == null || conList.isEmpty()) {
+                        return false;
+                    }
+
+                    for (ContainerOfUTXO con : conList) {
+                        if (con.getIndex() != elem.getIndex()) {
+                            continue;
+                        }
+                        if (!con.getIsUnspent()) {
+                            return false; // coins were already spent
+                        }
+                        // update taken UTXO
+                        con.setIsUnspent(false);
+                        break;
+                    }
+                }
+            }
+
+            // update inputted UTXO
+            String newTxHash = computeHash(objectMapper.writeValueAsString(tx));
+            List<ContainerOfUTXO> newConList = new ArrayList<>();
+            for (int i = 0; i < tx.getOutputs().size(); i++) {
+                newConList.add(new ContainerOfUTXO(i, true));
+            }
+            UTXO.put(newTxHash, newConList);
+        }
+
+        // clean up UTXO
+        List<String> removeKeys = new ArrayList<>();
+        for (Map.Entry<String, List<ContainerOfUTXO>> elem : UTXO.entrySet()) {
+            if (elem.getValue().isEmpty()) {
+                removeKeys.add(elem.getKey()); // remove if no list exists
+                continue;
+            }
+            List<ContainerOfUTXO> removers = new ArrayList<>();
+            for (ContainerOfUTXO con : elem.getValue()) {
+                if (!con.getIsUnspent()) {
+                     // remove all spent coins
+                    removers.add(con);
+                }
+            }
+            for (ContainerOfUTXO rem : removers) {
+                elem.getValue().remove(rem);
+            }
+            if (elem.getValue().isEmpty()) {
+                removeKeys.add(elem.getKey()); // remove if no list exists
+            }
+        }
+        for (String key : removeKeys) {
+            UTXO.remove(key);
+        }
 
         return true;
     }
@@ -202,6 +326,18 @@ public class Block implements Object {
                 && t == null ? that.t == null : t.equals(that.t)
                 && miner == null ? that.miner == null : miner.equals(that.miner)
                 && note == null ? that.note == null : note.equals(that.note);
+    }
+
+    @JsonIgnore
+    public boolean isGenesis() {
+
+        try {
+            String json = this.toJson();
+            String hash = computeHash(json);
+            return Util.hashIdOfGenesisBlock.equals(hash);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public String getType() {
@@ -268,11 +404,30 @@ public class Block implements Object {
         this.note = note;
     }
 
-    public String getUTXO() {
+    @JsonIgnore
+    public HashMap<String, List<ContainerOfUTXO>> getThisUTXO() {
         return UTXO;
     }
 
-    public void setUTXO(String UTXO) {
+    @JsonIgnore
+    public HashMap<String, List<ContainerOfUTXO>> getDeepCopyUTXO() {
+
+        HashMap<String, List<ContainerOfUTXO>> copy = new HashMap<>();
+        for (Map.Entry<String, List<ContainerOfUTXO>> entry : UTXO.entrySet()) {
+            String hashID = entry.getKey();
+            List<ContainerOfUTXO> outputs = entry.getValue();
+            List<ContainerOfUTXO> temp = new ArrayList<>();
+            for (ContainerOfUTXO elem : outputs) {
+                temp.add(new ContainerOfUTXO(elem.getIndex(), elem.getIsUnspent()));
+            }
+            copy.put(hashID, temp);
+        }
+
+        return copy;
+    }
+
+    @JsonIgnore
+    public void setUTXO(HashMap<String, List<ContainerOfUTXO>> UTXO) {
         this.UTXO = UTXO;
     }
 }
