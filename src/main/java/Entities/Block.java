@@ -14,6 +14,7 @@ import com.google.common.io.BaseEncoding;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +45,9 @@ public class Block implements Object {
     @JsonIgnore
     private HashMap<String, List<ContainerOfUTXO>> UTXO;
 
+    @JsonIgnore
+    private long height;
+
     public Block() {
     }
 
@@ -65,7 +69,7 @@ public class Block implements Object {
         this.note = note;
     }
 
-    public Block(String type, List<String> txids, String nonce, String previd, long created, String t, String miner, String note, HashMap<String, List<ContainerOfUTXO>> UTXO) {
+    public Block(String type, List<String> txids, String nonce, String previd, long created, String t, String miner, String note, HashMap<String, List<ContainerOfUTXO>> UTXO, long height) {
         this.type = type;
         this.txids = txids;
         this.nonce = nonce;
@@ -75,6 +79,7 @@ public class Block implements Object {
         this.miner = miner;
         this.note = note;
         this.UTXO = UTXO;
+        this.height = height;
     }
 
     // fetches unknown transactions of that block
@@ -99,6 +104,7 @@ public class Block implements Object {
 
         // case genesis block
         if (isGenesis()) {
+            height = 0;
             return true; // genesis is always valid
         }
 
@@ -128,10 +134,7 @@ public class Block implements Object {
             return false; // hash is greater than t
         }
 
-
-        // check chain of block (and get block height; and check created) TODO: not yet in this task!
-        //      long currentTime = Instant.now().getEpochSecond()
-
+        // Note: ServerListener handles recursive fetching
         if (!listOfKnownObjects.containsKey(previd)) {
             return false;
         }
@@ -140,6 +143,15 @@ public class Block implements Object {
         if (!(obj instanceof Block)) {
             return false;
         }
+
+        // check check created
+        long currentTime = Instant.now().getEpochSecond();
+        if (((Block) obj).getCreated() > created || created > currentTime) {
+            return false;
+        }
+
+        // set height
+        height = ((Block) obj).height + 1;
 
         // check transactions of block
         boolean first = true;
@@ -166,6 +178,11 @@ public class Block implements Object {
                 coinbaseTx = tx;
             }
             first = false;
+        }
+
+        // check height of coinbaseTx
+        if (coinbaseTx.getHeight() != height) {
+            return false;
         }
 
 

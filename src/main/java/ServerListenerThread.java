@@ -291,6 +291,104 @@ public class ServerListenerThread extends Thread {
 
                         if (value instanceof Block) {
                             Block block = (Block) value;
+                            boolean errorDuringRecursivePredecessorChecking = false;
+
+                            // getPrevBlocks if not known!
+                            // get and verify predecessor (recursively)
+                            // create stop criteria: genesis or already in knownObjects
+                            // also handle UTXO after each validation
+                            List<Block> predecessors = new ArrayList<>();
+                            Block currentIterationBlock = block;
+
+                            // TODO: set time limit
+                            // first fetch all predecessors
+                            while (!serverNode.getListOfObjects().containsKey(currentIterationBlock.getPrevid())
+                                    && !currentIterationBlock.isGenesis()) {
+
+                                HashMap<String, List<String>> cmds = new HashMap<>();
+                                List<String> params = new ArrayList<>();
+                                params.add(currentIterationBlock.getPrevid());
+                                cmds.put(getobject, params);
+                                // TODO: activate
+                                service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                                try {
+                                    Thread.sleep(1000*1); // wait 1 second
+                                } catch (Exception e) {
+
+                                }
+
+                                Object predecessor = serverNode.getListOfObjects().get(currentIterationBlock.getPrevid());
+                                if (!(predecessor instanceof Block)) {
+                                    errorDuringRecursivePredecessorChecking = true;
+                                    break;
+                                }
+                                currentIterationBlock = (Block) predecessor;
+                                predecessors.add(currentIterationBlock);
+                            }
+
+                            if (errorDuringRecursivePredecessorChecking) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Predecessors of Block could not be fetched on time!"));
+                                log.warning("Predecessors of Block could not be fetched on time!");
+                                break;
+                            }
+
+                            // second validate all predecessors and update UTXO
+                            for (int i = predecessors.size()-1; i >= 0; i--) {
+                                Block currentPredecessorBlock = predecessors.get(i);
+
+                                // handle missing transactions
+                                List<String> unknownTxs = currentPredecessorBlock.getUnknownTransaction(serverNode.getListOfObjects());
+                                if (!unknownTxs.isEmpty()) {
+                                    HashMap<String, List<String>> cmds = new HashMap<>();
+                                    for (String unknownTx : unknownTxs) {
+                                        List<String> params = new ArrayList<>();
+                                        params.add(unknownTx);
+                                        cmds.put(getobject, params);
+                                    }
+                                    // TODO: activate
+                                    service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                                    try {
+                                        Thread.sleep(1000*1); // wait 1 second
+                                    } catch (Exception e) { }
+                                }
+
+                                // handle verification
+                                if (!currentPredecessorBlock.verifyObject(serverNode.getListOfObjects())) {
+                                    errorDuringRecursivePredecessorChecking = true;
+                                    break;
+                                }
+
+                                // handle UTXO
+                                try {
+                                    boolean UTXOrespected = currentPredecessorBlock.updateAndCheckUTXO(serverNode.getListOfObjects());
+                                    if (!UTXOrespected) {
+                                        errorDuringRecursivePredecessorChecking = true;
+                                        log.warning("Transactions of this block violate the UTXO!");
+                                        break;
+                                    }
+                                    String utxoWasUpdated =  serverNode.appendToUTXOForNewHash(null, currentPredecessorBlock.getThisUTXO());
+                                    if (utxoWasUpdated == null || utxoWasUpdated.equals("")) {
+                                        // only an error during saving, the correct UTXO will be non-persistently stored in block
+                                        log.severe("No utxo was updated");
+                                    } else {
+                                        log.info(utxoWasUpdated);
+                                    }
+                                } catch (Exception e) {
+                                    errorDuringRecursivePredecessorChecking = true;
+                                    log.warning("Transactions of this block violate the UTXO!");
+                                    break;
+                                }
+                            }
+
+                            if (errorDuringRecursivePredecessorChecking) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Predecessors of Block failed verification!"));
+                                log.warning("Predecessors of Block failed verification!");
+                                break;
+                            }
+
+                            // handle missing transactions
                             List<String> unknownTxs = block.getUnknownTransaction(serverNode.getListOfObjects());
                             if (!unknownTxs.isEmpty()) {
                                 HashMap<String, List<String>> cmds = new HashMap<>();
@@ -302,7 +400,7 @@ public class ServerListenerThread extends Thread {
                                 // TODO: activate
                                 service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
                                 try {
-                                    Thread.sleep(1000*2 + 500); // wait 2.5 seconds
+                                    Thread.sleep(1000*1 + 500); // wait 1.5 seconds
                                 } catch (Exception e) {
 
                                 }
@@ -335,6 +433,7 @@ public class ServerListenerThread extends Thread {
                                 }
                                 String utxoWasUpdated =  serverNode.appendToUTXOForNewHash(key, block.getThisUTXO());
                                 if (utxoWasUpdated == null || utxoWasUpdated.equals("")) {
+                                    // only an error during saving, the correct UTXO will be non-persistently stored in block
                                     log.severe("No utxo was updated");
                                 } else {
                                     log.info(utxoWasUpdated);
