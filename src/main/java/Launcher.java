@@ -17,6 +17,7 @@ public class Launcher {
     public static final String fileNameOfStoredUTXOs = "utxos.txt";
 
     public static void main(String[] args) {
+        //docker: https://www.baeldung.com/java-dockerize-app
         int PORT = 18018;
         String IP_ADDRESS = "139.59.159.65";
         String name = "not node, hot implode";

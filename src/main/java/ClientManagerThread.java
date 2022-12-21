@@ -1,3 +1,5 @@
+import Entities.Block;
+
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,6 +16,8 @@ public class ClientManagerThread extends Thread {
     private String mode;
     private HashMap<String, List<String>> commands;
     private Logger log;
+
+    private List<Block> foundBlocks = new ArrayList<>();
 
     private String clientManagerLogMsg;
 
@@ -37,7 +41,7 @@ public class ClientManagerThread extends Thread {
         List<String> nonGraders = new ArrayList<>();
 
         for (String peer : peers) {
-            if (peer.startsWith("128.130.122.101")) {
+            if (peer.startsWith("128.130.122.101") || peer.startsWith("127.0.0.1") || peer.startsWith("127.0.0.0")) {
                 graders.add(peer);
             } else {
                 nonGraders.add(peer);
@@ -62,7 +66,7 @@ public class ClientManagerThread extends Thread {
                 String host = grader.substring(0, grader.lastIndexOf(":"));
 
                 log.info(clientManagerLogMsg + "starting connection to grader: " + grader);
-                service.execute(new ClientThread(host, port, serverNode, sockets, commands, log));
+                service.execute(new ClientThread(this, host, port, serverNode, sockets, commands, log));
 
 
             } catch (Exception e) {
@@ -88,7 +92,7 @@ public class ClientManagerThread extends Thread {
                 String host = nonGrader.substring(0, nonGrader.lastIndexOf(":"));
 
                 log.info(clientManagerLogMsg + "starting connection to nonGrader: " + nonGrader);
-                service.execute(new ClientThread(host, port, serverNode, sockets, commands, log));
+                service.execute(new ClientThread(this, host, port, serverNode, sockets, commands, log));
 
 
             } catch (Exception e) {
@@ -96,5 +100,15 @@ public class ClientManagerThread extends Thread {
             }
             counter++;
         }
+    }
+
+    public synchronized void updateBlocks(Block block) {
+        if (!foundBlocks.contains(block)) {
+            foundBlocks.add(block);
+        }
+    }
+
+    public List<Block> getFoundBlocks() {
+        return foundBlocks;
     }
 }

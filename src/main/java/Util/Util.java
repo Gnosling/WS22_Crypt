@@ -24,6 +24,8 @@ public class Util {
     public static final String getobject = "getobject";
     public static final String ihaveobject = "ihaveobject";
     public static final String object = "object";
+    public static final String getchaintip = "getchaintip";
+    public static final String chaintip = "chaintip";
 
     public static final String hashIdOfGenesisBlock = "00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e";
 
@@ -241,12 +243,12 @@ public class Util {
         }
     }
 
-    public static void main(String[] args) {
-        byte[] messageAsBytes = "a26d92800cf58e88a5ecf37156c031a4147c2128beeaf1cca2785c93242a4c8b".getBytes(StandardCharsets.UTF_8);
-        Object o = new Transaction();
-        List<Long> s = new ArrayList<>();
-        s.add(Long.valueOf(0)); s.add(12L);
-        int i = 0;
-
-    }
+//    public static void main(String[] args) {
+//        byte[] messageAsBytes = "a26d92800cf58e88a5ecf37156c031a4147c2128beeaf1cca2785c93242a4c8b".getBytes(StandardCharsets.UTF_8);
+//        Object o = new Transaction();
+//        List<Long> s = new ArrayList<>();
+//        s.add(Long.valueOf(0)); s.add(12L);
+//        int i = 0;
+//
+//    }
 }

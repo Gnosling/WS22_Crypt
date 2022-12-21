@@ -1,18 +1,20 @@
 package Util;
 
+import Entities.Block;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import messages.GetPeersMessage;
 import messages.PeersMessage;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static Util.Util.isJson;
-import static Util.Util.isParsableInJson;
+import static Util.Util.*;
 
 public class ClientTester {
 
@@ -20,6 +22,8 @@ public class ClientTester {
         System.out.println("started");
         Socket clientSocket = new Socket(host, port);
         clientSocket.setSoTimeout(1000*90); // terminate after 90s
+
+        System.out.println("This is: " + clientSocket.getInetAddress().getHostAddress() + ":" + clientSocket.getLocalPort() + ":" + clientSocket.getPort());
 
         // prepare the input reader for the socket
         BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
@@ -46,6 +50,9 @@ public class ClientTester {
         // expect then the getpeers-request
         response = reader.readLine();
         System.out.println("Get peers: " + response);
+        // then expect getchaintip
+        response = reader.readLine();
+        System.out.println("Get chaintip: " + response);
 
         // expect then a list of peers
         response = reader.readLine();
@@ -241,7 +248,7 @@ public class ClientTester {
 
         // ____________________________________________________________________________________________________________________________________________________
         //                          --- --- ------ --- ---
-        //                          --- --- TASK 3 --- ---
+        //                          --- ---TASK 3/4--- ---
         //                          --- --- ------ --- ---
         // ____________________________________________________________________________________________________________________________________________________
         // Send genesis
@@ -250,40 +257,91 @@ public class ClientTester {
 //                "\"type\":\"object\"}";
 //        writer.println(request);
 //        writer.flush();
-
-        // Send transaction
+//
+//        // Send transaction
 //        System.out.println("send tx");
-//        request = "{\"object\": {" +
-//                "\"type\" : \"transaction\" ," +
-//                "\"height\" : 0," +
-//                "\"outputs\" : [" +
-//                "{" +
-//                "\"pubkey\": \"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9\" ," +
-////                "\"value\" : 50000000000000" +
-//                "\"value\" : 50000000000" +
-//                "} ]" +
-//                "}, " +
+//        request = "{\"object\": " +
+//                "{\"height\":1,\"outputs\":[{\"pubkey\":\"f66c7d51551d344b74e071d3b988d2bc09c3ffa82857302620d14f2469cfbf60\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
 //                "\"type\":\"object\"}";
 //        writer.println(request);
 //        writer.flush();
 
-        // Send block
+        // send valid block
+//        request = "{\"object\": " +
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624220079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000001beecbf3\",\"note\":\"First block after genesis with CBTX and TX spending it\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+
+        // Send wrong genesis
+//        request = "{\"object\": {\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624219078,\"miner\":\"mdsfsdpmd\",\"nonce\":\"0000000000000000000000000000000000000000000000000000001884878840\",\"note\":\"The mimomfpewm shortage\",\"previd\":null,\"txids\":[],\"type\":\"block\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+
+//         Send block with invalid prev
 //        System.out.println("send block");
-//        request = "{\"object\": {" +
-//                "\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\" ," +
-//                "\"created\":1624229079," +
-//                "\"miner\":\"TUWien−Kerma\" ," +
-//                "\"nonce\":\"200000000000000000000000000000000000000000000000000000000e762cb9\" ," +
-//                "\"note\":\"First block . Yayy, I have 50 ker now!!\" ," +
-//                "\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\" ," +
-//                "\"txids\":[\"1bb37b637d07100cd26fc063dfd4c39a7931cc88dae3417871219715a5e374af\"] ," +
-////                "\"txids\":[\"10ef61ebef8cc660b86bc6c338b379769e9cc3f768900a49f87999a32701bbea\"] ," +
-//                "\"type\" :\"block\"" +
-//                "}," +
+//        request = "{\"object\": "+
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":2334219079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000009d8b60ea\",\"note\":\"First block after genesis with CBTX\",\"previd\":\"c320c45c6e67f8ef5bef365150fa061a83868efd9171f44638052a6ab20199a6\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
 //                "\"type\":\"object\"}";
 //        writer.println(request);
 //        writer.flush();
 
+
+        // Send blockchain of 2 (valid)
+//        request = "{\"object\": " +
+//                "{\"height\":1,\"outputs\":[{\"pubkey\":\"f66c7d51551d344b74e071d3b988d2bc09c3ffa82857302620d14f2469cfbf60\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+//        request = "{\"object\": " +
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624220079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000009d8b60ea\",\"note\":\"First block after genesis with CBTX\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+//        request = "{\"object\": " +
+//                "{\"height\":2,\"outputs\":[{\"pubkey\":\"c7c2c13afd02be7986dee0f4630df01abdbc950ea379055f1a423a6090f1b2b3\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+//        request = "{\"object\": " +
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624221079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000004d82fc68\",\"note\":\"Second block after genesis with CBTX\",\"previd\":\"0000000108bdb42de5993bcf5f7d92557585dd6abfe9fb68e796518fe7f2ed2e\",\"txids\":[\"73231cc901774ddb4196ee7e9e6b857b208eea04aee26ced038ac465e1e706d2\"],\"type\":\"block\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+        // invalid block 2 from here down
+//        request = "{\"object\": " +
+//                "{\"height\":1,\"outputs\":[{\"pubkey\":\"c7c2c13afd02be7986dee0f4630df01abdbc950ea379055f1a423a6090f1b2b3\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+//        request = "{\"object\": " +
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624221079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000004d82fc68\",\"note\":\"Second block after genesis with CBTX\",\"previd\":\"0000000108bdb42de5993bcf5f7d92557585dd6abfe9fb68e796518fe7f2ed2e\",\"txids\":[\"0cef81bb770526ba158c80a6e10d1b027da0bd1c0ed1f192e3c5000083d315ce\"],\"type\":\"block\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
+
+
+        
+        // Send getChaintip and expect chaintip
+        System.out.println("send getchaintip");
+        request = "{\"type\":\"getchaintip\"}";
+        writer.println(request);
+        writer.flush();
+        System.out.println(reader.readLine());
+
+        // Send Chaintip
+//        request = "{\"type\":\"chaintip\",\"blockid\":\"00000002a8986627f379547ed1ec990841e1f1c6ba616a56bfcd4b410280dc6d\"}";
+//        writer.println(request);
+//        writer.flush();
+
+//        // send another block
+//        System.out.println("send cbtx");
+//        request = "{\"object\": " +
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624219081,\"miner\":\"grader\",\"nonce\":\"3000000000000000000000000000000000000000000000000000000047fcefbc\",\"note\":\"This block has a coinbase transaction\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"7beb66b257df282da23d30d06966ca0902ce0d764fb062b77560b03e187a53d7\"],\"type\":\"block\"}, " +
+//                "\"type\":\"object\"}";
+//        writer.println(request);
+//        writer.flush();
 
         // cbtx_spent_in_same_block
 //        System.out.println("send cbtx");
@@ -459,7 +517,15 @@ public class ClientTester {
         String host = "localhost";
 //        String host = "139.59.159.65";
 //        String host = "128.130.122.101";
-        int port = 18018;
+        int port = 18020;
+
+
+        String hash = "";
+//        String thiso = "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624221800,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000009d8b60ea\",\"note\":\"First block after genesis with CBTX\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}";
+        String thiso = "{\"object\": {\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624219078,\"miner\":\"mdsfsdpmd\",\"nonce\":\"0000000000000000000000000000000000000000000000000000001884878840\",\"note\":\"The mimomfpewm shortage\",\"previd\":null,\"txids\":[],\"type\":\"block\"}";
+        hash = computeHash(thiso);
+        System.out.println(hash);
+
         testValidRequests(host, port);
 //        testInvalidRequests(host, port);
 //        System.out.println(isJson("{\"object\": {\"inputs\":[{\"outpoint\":{\"index\":0,\"txid\":\"48c2ae2fbb4dead4bcc5801f6eaa9a350123a43750d22d05c53802b69c7cd9fb\"},\"sig\":\"d51e82d5c121c5db21c83404aaa3f591f2099bccf731208c4b0b676308be1f994882f9d991c0ebfd8fdecc90a4aec6165fc3440ade9c83b043cba95b2bba1d0a\"}],\"outputs\":[{\"pubkey\":\"228ee807767047682e9a556ad1ed78dff8d7edf4bc2a5f4fa02e4634cfcad7e0\",\"value\":49000000000000}],\"type\":\"transaction\"}, " +

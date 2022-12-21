@@ -49,7 +49,12 @@ public class ServerListenerThread extends Thread {
             sockets.add(socket);
             service.execute(new ServerListenerThread(serverNode, serverSocket, service, sockets, log));
             socket.setSoTimeout(1000*10); // terminate after 10s
-            log.info("Connected to new client: " + socket.getInetAddress());
+
+            String host = socket.getInetAddress().getHostAddress();
+            int port = socket.getPort();
+
+            serverNode.getListOfDiscoveredPeers().add(host + ":" + port);
+            log.info("Connected to new client: " + host + ":" + port);
 
             // prepare the input reader for the socket
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -77,6 +82,13 @@ public class ServerListenerThread extends Thread {
             writer.println(response);
             writer.flush();
             log.info("[first-asked-for-peers]: " + response);
+
+            // Third send getchaintip
+            GetChaintipMessage getChaintipMessage = new GetChaintipMessage(getchaintip);
+            response = objectMapper.writeValueAsString(getChaintipMessage);
+            writer.println(response);
+            writer.flush();
+            log.info("[first-asked-for-chaintip]: " + response);
 
             response = "";
 
@@ -121,7 +133,7 @@ public class ServerListenerThread extends Thread {
                     writer.flush();
                     log.warning("Unsupported message type received!");
                     break;
-                } else if (type.equals("getchaintip") || type.equals("getmempool")) {
+                } else if (type.equals("getmempool")) {
                     // other message-types not yet required
                     continue;
                 }
@@ -293,14 +305,9 @@ public class ServerListenerThread extends Thread {
                             Block block = (Block) value;
                             boolean errorDuringRecursivePredecessorChecking = false;
 
-                            // getPrevBlocks if not known!
-                            // get and verify predecessor (recursively)
-                            // create stop criteria: genesis or already in knownObjects
-                            // also handle UTXO after each validation
                             List<Block> predecessors = new ArrayList<>();
                             Block currentIterationBlock = block;
 
-                            // TODO: set time limit
                             // first fetch all predecessors
                             while (!serverNode.getListOfObjects().containsKey(currentIterationBlock.getPrevid())
                                     && !currentIterationBlock.isGenesis()) {
@@ -310,14 +317,28 @@ public class ServerListenerThread extends Thread {
                                 params.add(currentIterationBlock.getPrevid());
                                 cmds.put(getobject, params);
                                 // TODO: activate
-                                service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                                ClientManagerThread clientManger = new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log);
+                                service.execute(clientManger);
+                                // or while loop for fetching return values of client manager?
                                 try {
                                     Thread.sleep(1000*1); // wait 1 second
                                 } catch (Exception e) {
 
                                 }
 
-                                Object predecessor = serverNode.getListOfObjects().get(currentIterationBlock.getPrevid());
+                                Object predecessor = null;
+                                List<Block> foundBlocks = clientManger.getFoundBlocks();
+
+                                for (Block elem : foundBlocks) {
+                                    String hash = "";
+                                    try {
+                                        hash = computeHash(elem.toJson());
+                                        if (hash.equals(currentIterationBlock.getPrevid())) {
+                                            predecessor = elem;
+                                        }
+                                    } catch (IOException ioException) { }
+                                }
+
                                 if (!(predecessor instanceof Block)) {
                                     errorDuringRecursivePredecessorChecking = true;
                                     break;
@@ -379,6 +400,20 @@ public class ServerListenerThread extends Thread {
                                     log.warning("Transactions of this block violate the UTXO!");
                                     break;
                                 }
+
+                                // persist predecessor block
+                                key = computeHash(objectMapper.writeValueAsString(currentPredecessorBlock));
+
+                                HashMap<String, Object> newObjects = new HashMap<>();
+                                newObjects.put(key,currentPredecessorBlock);
+                                String objectsWereUpdated = serverNode.appendToObjects(newObjects);
+                                if (objectsWereUpdated == null) {
+                                    log.severe("ERROR - objects could not be read from file!");
+                                } else if (objectsWereUpdated.equals("")) {
+                                    log.info("No objects were updated");
+                                } else {
+                                    log.info("Objects were updated : " + objectsWereUpdated);
+                                }
                             }
 
                             if (errorDuringRecursivePredecessorChecking) {
@@ -388,7 +423,7 @@ public class ServerListenerThread extends Thread {
                                 break;
                             }
 
-                            // handle missing transactions
+                            // handle missing transactions of most recent block
                             List<String> unknownTxs = block.getUnknownTransaction(serverNode.getListOfObjects());
                             if (!unknownTxs.isEmpty()) {
                                 HashMap<String, List<String>> cmds = new HashMap<>();
@@ -400,7 +435,7 @@ public class ServerListenerThread extends Thread {
                                 // TODO: activate
                                 service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
                                 try {
-                                    Thread.sleep(1000*1 + 500); // wait 1.5 seconds
+                                    Thread.sleep(1000*1); // wait 1 second
                                 } catch (Exception e) {
 
                                 }
@@ -444,6 +479,14 @@ public class ServerListenerThread extends Thread {
                                 log.warning("Transactions of this block violate the UTXO!");
                                 break;
                             }
+
+                            // update chaintip
+                            String chaintipWasUpdated = serverNode.checkAndUpdateChaintip(block);
+                            if (chaintipWasUpdated == null) {
+                                log.severe("ERROR - chaintip could not be updated!");
+                            } else {
+                                log.info(chaintipWasUpdated);
+                            }
                         }
 
                         HashMap<String, Object> newObjects = new HashMap<>();
@@ -460,9 +503,283 @@ public class ServerListenerThread extends Thread {
                         List<String> params = new ArrayList<>();
                         params.add(key);
                         cmds.put(ihaveobject, params);
-                        // TODO: reavtivate
+                        // TODO: activate
                         service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
 
+                        continueWithoutResponse = true;
+                        break;
+
+                    case getchaintip:
+                        log.info("[Case: GETCHAINTIP]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, GetChaintipMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetChaintip-Message could not be parsed!"));
+                            log.warning("GetChaintip-Message could not be parsed!");
+                            break;
+                        }
+                        GetChaintipMessage receivedGetChaintip = objectMapper.readValue(request, GetChaintipMessage.class);
+
+                        // chaintip is stored in servernode
+                        ChaintipMessage responseChaintip = new ChaintipMessage(chaintip, serverNode.getChaintip());
+                        response = objectMapper.writeValueAsString(responseChaintip);
+                        break;
+
+                    case chaintip:
+                        log.info("[Case: CHAINTIP]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, ChaintipMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Chaintip-Message could not be parsed!"));
+                            log.warning("Chaintip-Message could not be parsed!");
+                            break;
+                        }
+
+                        ChaintipMessage receivedChaintip = objectMapper.readValue(request, ChaintipMessage.class);
+
+                        if (!serverNode.getListOfObjects().containsKey(receivedChaintip.getBlockid())) {
+                            // fetch Block
+                            cmds = new HashMap<>();
+                            params = new ArrayList<>();
+                            params.add(receivedChaintip.getBlockid());
+                            cmds.put(getobject, params);
+                            // TODO: activate
+                            ClientManagerThread clientManager = new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log);
+                            service.execute(clientManager);
+                            try {
+                                Thread.sleep(1000 * 1); // wait 1 second
+                            } catch (Exception e) {
+
+                            }
+
+                            List<Block> foundBlocks = clientManager.getFoundBlocks();
+                            for (Block elem : foundBlocks) {
+                                String hash = "";
+                                try {
+                                    hash = computeHash(elem.toJson());
+                                    if (hash.equals(receivedChaintip.getBlockid())) {
+                                        value = elem;
+                                    }
+                                } catch (IOException ioException) {
+                                }
+                            }
+
+
+                            if (!(value instanceof Block)) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Chaintip was not fetched on time!"));
+                                log.warning("Chaintip was not fetched on time!");
+                                break;
+                            }
+
+                            // repeat 4A
+                            Block block = (Block) value;
+                            boolean errorDuringRecursivePredecessorChecking = false;
+
+                            List<Block> predecessors = new ArrayList<>();
+                            Block currentIterationBlock = block;
+
+                            // first fetch all predecessors
+                            while (!serverNode.getListOfObjects().containsKey(currentIterationBlock.getPrevid())
+                                    && !currentIterationBlock.isGenesis()) {
+
+                                cmds = new HashMap<>();
+                                params = new ArrayList<>();
+                                params.add(currentIterationBlock.getPrevid());
+                                cmds.put(getobject, params);
+                                // TODO: activate
+                                ClientManagerThread clientManger = new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log);
+                                service.execute(clientManger);
+                                try {
+                                    Thread.sleep(1000 * 1); // wait 1 second
+                                } catch (Exception e) {
+
+                                }
+
+                                Object predecessor = null;
+                                foundBlocks = clientManger.getFoundBlocks();
+
+                                for (Block elem : foundBlocks) {
+                                    String hash = "";
+                                    try {
+                                        hash = computeHash(elem.toJson());
+                                        if (hash.equals(currentIterationBlock.getPrevid())) {
+                                            predecessor = elem;
+                                        }
+                                    } catch (IOException ioException) {
+                                    }
+                                }
+
+                                if (!(predecessor instanceof Block)) {
+                                    errorDuringRecursivePredecessorChecking = true;
+                                    break;
+                                }
+                                currentIterationBlock = (Block) predecessor;
+                                predecessors.add(currentIterationBlock);
+                            }
+
+                            if (errorDuringRecursivePredecessorChecking) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Predecessors of Block could not be fetched on time!"));
+                                log.warning("Predecessors of Block could not be fetched on time!");
+                                break;
+                            }
+
+                            // second validate all predecessors and update UTXO
+                            for (int i = predecessors.size() - 1; i >= 0; i--) {
+                                Block currentPredecessorBlock = predecessors.get(i);
+
+                                // handle missing transactions
+                                List<String> unknownTxs = currentPredecessorBlock.getUnknownTransaction(serverNode.getListOfObjects());
+                                if (!unknownTxs.isEmpty()) {
+                                    cmds = new HashMap<>();
+                                    for (String unknownTx : unknownTxs) {
+                                        params = new ArrayList<>();
+                                        params.add(unknownTx);
+                                        cmds.put(getobject, params);
+                                    }
+                                    // TODO: activate
+                                    service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                                    try {
+                                        Thread.sleep(1000 * 1); // wait 1 second
+                                    } catch (Exception e) {
+                                    }
+                                }
+
+                                // handle verification
+                                if (!currentPredecessorBlock.verifyObject(serverNode.getListOfObjects())) {
+                                    errorDuringRecursivePredecessorChecking = true;
+                                    break;
+                                }
+
+                                // handle UTXO
+                                try {
+                                    boolean UTXOrespected = currentPredecessorBlock.updateAndCheckUTXO(serverNode.getListOfObjects());
+                                    if (!UTXOrespected) {
+                                        errorDuringRecursivePredecessorChecking = true;
+                                        log.warning("Transactions of this block violate the UTXO!");
+                                        break;
+                                    }
+                                    String utxoWasUpdated = serverNode.appendToUTXOForNewHash(null, currentPredecessorBlock.getThisUTXO());
+                                    if (utxoWasUpdated == null || utxoWasUpdated.equals("")) {
+                                        // only an error during saving, the correct UTXO will be non-persistently stored in block
+                                        log.severe("No utxo was updated");
+                                    } else {
+                                        log.info(utxoWasUpdated);
+                                    }
+                                } catch (Exception e) {
+                                    errorDuringRecursivePredecessorChecking = true;
+                                    log.warning("Transactions of this block violate the UTXO!");
+                                    break;
+                                }
+
+                                // persist predecessor block
+                                key = computeHash(objectMapper.writeValueAsString(currentPredecessorBlock));
+
+                                newObjects = new HashMap<>();
+                                newObjects.put(key, currentPredecessorBlock);
+                                objectsWereUpdated = serverNode.appendToObjects(newObjects);
+                                if (objectsWereUpdated == null) {
+                                    log.severe("ERROR - objects could not be read from file!");
+                                } else if (objectsWereUpdated.equals("")) {
+                                    log.info("No objects were updated");
+                                } else {
+                                    log.info("Objects were updated : " + objectsWereUpdated);
+                                }
+                            }
+
+                            if (errorDuringRecursivePredecessorChecking) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Predecessors of Block failed verification!"));
+                                log.warning("Predecessors of Block failed verification!");
+                                break;
+                            }
+
+                            // handle missing transactions of most recent block
+                            List<String> unknownTxs = block.getUnknownTransaction(serverNode.getListOfObjects());
+                            if (!unknownTxs.isEmpty()) {
+                                cmds = new HashMap<>();
+                                for (String unknownTx : unknownTxs) {
+                                    params = new ArrayList<>();
+                                    params.add(unknownTx);
+                                    cmds.put(getobject, params);
+                                }
+                                // TODO: activate
+                                service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                                try {
+                                    Thread.sleep(1000 * 1); // wait 1 second
+                                } catch (Exception e) {
+
+                                }
+                            }
+
+                            if (!block.verifyObject(serverNode.getListOfObjects())) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Block-Message could not be verified!"));
+                                log.warning("Block-Message could not be verified!");
+                                break;
+                            }
+                            key = computeHash(objectMapper.writeValueAsString(block));
+
+                            try {
+                                boolean UTXOrespected = block.updateAndCheckUTXO(serverNode.getListOfObjects());
+                                if (!UTXOrespected) {
+                                    badRequest = true;
+                                    response = objectMapper.writeValueAsString(new ErrorMessage(error, "Transactions of this block violate the UTXO!"));
+                                    log.warning("Transactions of this block violate the UTXO!");
+                                    break;
+                                }
+                                String utxoWasUpdated = serverNode.appendToUTXOForNewHash(key, block.getThisUTXO());
+                                if (utxoWasUpdated == null || utxoWasUpdated.equals("")) {
+                                    // only an error during saving, the correct UTXO will be non-persistently stored in block
+                                    log.severe("No utxo was updated");
+                                } else {
+                                    log.info(utxoWasUpdated);
+                                }
+                            } catch (Exception e) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Transactions of this block violate the UTXO!"));
+                                log.warning("Transactions of this block violate the UTXO!");
+                                break;
+                            }
+
+
+                            newObjects = new HashMap<>();
+                            newObjects.put(key, value);
+                            objectsWereUpdated = serverNode.appendToObjects(newObjects);
+                            if (objectsWereUpdated == null) {
+                                log.severe("ERROR - objects could not be read from file!");
+                            } else if (objectsWereUpdated.equals("")) {
+                                log.info("No objects were updated");
+                            } else {
+                                log.info("Objects were updated : " + objectsWereUpdated);
+                            }
+                            cmds = new HashMap<>();
+                            params = new ArrayList<>();
+                            params.add(key);
+                            cmds.put(ihaveobject, params);
+                            // TODO: activate
+                            service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+
+                        }
+
+                        // update chaintip
+                        String chaintipWasUpdated = serverNode.checkAndUpdateChaintip(((Block)serverNode.getListOfObjects().get(receivedChaintip.getBlockid())));
+                        if (chaintipWasUpdated == null) {
+                            log.severe("ERROR - chaintip could not be updated!");
+                        } else {
+                            log.info(chaintipWasUpdated);
+                        }
                         continueWithoutResponse = true;
                         break;
 

@@ -1,3 +1,4 @@
+import Entities.Block;
 import Entities.Object;
 import Util.Util;
 import Util.ContainerOfUTXO;
@@ -18,7 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
-import static Util.Util.appendUTXOOnPersistentFileForHashOfBlock;
+import static Util.Util.*;
 
 public class ServerNode {
 
@@ -28,6 +29,8 @@ public class ServerNode {
     private String versionOfNode;
     private List<String> listOfDiscoveredPeers;
     private HashMap<String, Object> listOfObjects;
+    private String chaintip;
+    private long lengthOfLongestChain = -1;
     private Logger log;
 
     private ExecutorService service;
@@ -56,7 +59,9 @@ public class ServerNode {
 
             service.execute(new ServerListenerThread(this, serverSocket, service, sockets, log));
             HashMap<String, List<String>> cmds = new HashMap<>();
-//            service.execute(new ClientManagerThread(this, service, sockets, "", cmds, log));
+            cmds.put(getchaintip, null);
+            // TODO: don't activate
+//            service.execute(new ClientManagerThread(this, service, sockets, "broadcast", cmds, log));
             log.info("launched");
         } catch (IOException e) {
             throw new UncheckedIOException("Error while server socket: ", e);
@@ -96,6 +101,10 @@ public class ServerNode {
                     }
                     log.info(" --- Objects --- \n" + objects);
 
+
+                } else if (("chaintip").equals(cmd)) {
+                    log.info(" --- chaintip --- \n" + chaintip + ", with height: " + lengthOfLongestChain);
+
                 } else if (cmd.startsWith("connect to ")) {
                     String[] parts = cmd.split(" ");
                     if (parts.length != 4) {
@@ -111,7 +120,7 @@ public class ServerNode {
                         log.warning("wrong port; expected 'connect to <host> <port>");
                     }
                     HashMap<String, List<String>> commands = new HashMap<>();
-                    service.execute(new ClientThread(host, port, this, sockets, commands, log));
+                    service.execute(new ClientThread(null, host, port, this, sockets, commands, log));
 
 //                } else if (cmd.equals("start clientmanager")) {
 //                    // TODO: start new clientmanager?
@@ -245,6 +254,26 @@ public class ServerNode {
         return updatedInfo;
     }
 
+    public synchronized String checkAndUpdateChaintip(Block receivedChaintipBlock) {
+        if (receivedChaintipBlock == null)
+        {
+            return null;
+        }
+        if (receivedChaintipBlock.getHeight() > lengthOfLongestChain) {
+            lengthOfLongestChain = receivedChaintipBlock.getHeight();
+            String chaintip = "";
+            try {
+                chaintip = computeHash(receivedChaintipBlock.toJson());
+            } catch (IOException ioException) {
+                return null;
+            }
+            this.chaintip = chaintip;
+            return "Chain is longer -> chaintip was updated";
+        } else {
+            return "Chain is not longer -> No update";
+        }
+    }
+
     public ExecutorService getService() {
         return service;
     }
@@ -259,5 +288,13 @@ public class ServerNode {
 
     public String getServerAddress() {
         return serverAddress;
+    }
+
+    public String getChaintip() {
+        return chaintip;
+    }
+
+    public long getLengthOfLongestChain() {
+        return lengthOfLongestChain;
     }
 }

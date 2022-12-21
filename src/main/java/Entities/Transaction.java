@@ -39,8 +39,8 @@ public class Transaction implements Object {
                 if (this == o) return true;
                 if (o == null || getClass() != o.getClass()) return false;
                 Outpoint that = (Outpoint) o;
-                return txid == null ? that.txid == null : txid.equals(that.txid)
-                        && index == that.index;
+                return (txid == null ? that.txid == null : txid.equals(that.txid))
+                        && (index == that.index);
             }
 
             public String getTxid() {
@@ -75,8 +75,8 @@ public class Transaction implements Object {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             Input that = (Input) o;
-            return outpoint == null ? that.outpoint == null : outpoint.equals(that.outpoint)
-                    && sig == null ? that.sig == null : sig.equals(that.sig);
+            return (outpoint == null ? that.outpoint == null : outpoint.equals(that.outpoint))
+                    && (sig == null ? that.sig == null : sig.equals(that.sig));
         }
 
         public Outpoint getOutpoint() {
@@ -111,8 +111,8 @@ public class Transaction implements Object {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             Output that = (Output) o;
-            return pubkey == null ? that.pubkey == null : pubkey.equals(that.pubkey)
-                    && value == that.value;
+            return (pubkey == null ? that.pubkey == null : pubkey.equals(that.pubkey))
+                    && (value == that.value);
         }
 
         public String getPubkey() {

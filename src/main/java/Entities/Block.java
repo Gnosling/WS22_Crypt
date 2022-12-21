@@ -94,7 +94,6 @@ public class Block implements Object {
     }
 
     public boolean verifyObject(HashMap<String, Object> listOfKnownObjects){
-        // TODO: created is integer UNIX timestamp in seconds, later than all its pred but not after currenttime --> not this task
 
         ObjectMapper objectMapper = new ObjectMapper();
         SimpleModule module = new SimpleModule();
@@ -130,6 +129,7 @@ public class Block implements Object {
         } catch (IOException ioException) {
             return false;
         }
+
         if (t.compareTo(hash) <= 0) {
             return false; // hash is greater than t
         }
@@ -146,7 +146,7 @@ public class Block implements Object {
 
         // check check created
         long currentTime = Instant.now().getEpochSecond();
-        if (((Block) obj).getCreated() > created || created > currentTime) {
+        if (((Block) obj).getCreated() >= created || created > currentTime) {
             return false;
         }
 
@@ -180,15 +180,16 @@ public class Block implements Object {
             first = false;
         }
 
-        // check height of coinbaseTx
-        if (coinbaseTx.getHeight() != height) {
-            return false;
-        }
-
 
         // check that coinbase is not spent in another transaction in the same block
         // and also that coinbase value is not larger than block reward plus the fees
         if (coinbaseTx != null) {
+
+            // check height
+            if (coinbaseTx.getHeight() != height) {
+                return false;
+            }
+
             String coinbaseHash = "";
             long sumOfFees = 0;
             try {
@@ -217,6 +218,49 @@ public class Block implements Object {
             }
         }
 
+
+        return true;
+    }
+
+    public boolean preVerify(HashMap<String, Object> listOfKnownObjects) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Transaction.class, new TransactionSerializer());
+        objectMapper.registerModule(module);
+        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
+
+        // case genesis block
+        if (isGenesis()) {
+            height = 0;
+            return true; // genesis is always valid
+        }
+
+        // check mandatory fields
+        if (type == null || nonce == null || previd == null || created == 0 || t == null || txids == null || txids.isEmpty()) {
+            return false;
+        }
+
+
+        // check format of fields
+        byte[] nonceAsBytes = BaseEncoding.base16().decode(nonce.toUpperCase());
+        if (nonceAsBytes.length != 32) { return false; }
+        if (!t.equals("00000002af000000000000000000000000000000000000000000000000000000")) { return false; }
+        if (created < 0) { return false; }
+        if (miner != null && miner.length() > 128) { return false; }
+        if (note != null && note.length() > 128) { return false; }
+
+
+        // check proof-of-work
+        String hash = "";
+        try {
+            hash = computeHash(this.toJson());
+        } catch (IOException ioException) {
+            return false;
+        }
+
+        if (t.compareTo(hash) <= 0) {
+            return false; // hash is greater than t
+        }
 
         return true;
     }
@@ -335,14 +379,14 @@ public class Block implements Object {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Block that = (Block) o;
-        return type == null ? that.type == null : type.equals(that.type)
-                && txids == null ? that.txids == null : txids.equals(that.txids)
-                && nonce == null ? that.nonce == null : nonce.equals(that.nonce)
-                && previd == null ? that.previd == null : previd.equals(that.previd)
-                && created == that.created
-                && t == null ? that.t == null : t.equals(that.t)
-                && miner == null ? that.miner == null : miner.equals(that.miner)
-                && note == null ? that.note == null : note.equals(that.note);
+        return (type == null ? that.type == null : type.equals(that.type))
+                && (txids == null ? that.txids == null : txids.equals(that.txids))
+                && (nonce == null ? that.nonce == null : nonce.equals(that.nonce))
+                && (previd == null ? that.previd == null : previd.equals(that.previd))
+                && (created == that.created)
+                && (t == null ? that.t == null : t.equals(that.t))
+                && (miner == null ? that.miner == null : miner.equals(that.miner))
+                && (note == null ? that.note == null : note.equals(that.note));
     }
 
     @JsonIgnore
@@ -419,6 +463,10 @@ public class Block implements Object {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public long getHeight() {
+        return height;
     }
 
     @JsonIgnore

@@ -24,6 +24,7 @@ import static Util.Util.error;
 
 public class ClientThread extends Thread {
 
+    private ClientManagerThread clientManagerThread;
     private String host;
     private int port;
     private ServerNode serverNode;
@@ -36,7 +37,8 @@ public class ClientThread extends Thread {
     private boolean wasGreeted = false;
 
 
-    public ClientThread(String host, int port, ServerNode serverNode, List<Socket> sockets, HashMap<String, List<String>> commands, Logger log) {
+    public ClientThread(ClientManagerThread clientManagerThread, String host, int port, ServerNode serverNode, List<Socket> sockets, HashMap<String, List<String>> commands, Logger log) {
+        this.clientManagerThread = clientManagerThread;
         this.host = host;
         this.port = port;
         this.serverNode = serverNode;
@@ -52,7 +54,7 @@ public class ClientThread extends Thread {
         try {
             clientSocket = new Socket(host, port);
             sockets.add(clientSocket);
-            clientSocket.setSoTimeout(1000 * 4); // terminate after 4s
+            clientSocket.setSoTimeout(1000 * 2); // terminate after 2s
             log.info(clientLogMsg + "- connected to new server");
         } catch (Exception e) {
             log.warning(clientLogMsg + "Node: " + host + ":" + port + "; is not a connectable address!");
@@ -132,7 +134,7 @@ public class ClientThread extends Thread {
                     writer.flush();
                     log.warning(clientLogMsg + "- unsupported message type received!");
                     break;
-                } else if (type.equals("getchaintip") || type.equals("getmempool")) {
+                } else if (type.equals("getmempool")) {
                     // other message-types not yet required
                     continue;
                 }
@@ -304,80 +306,86 @@ public class ClientThread extends Thread {
 
                         if (value instanceof Block) {
                             Block block = (Block) value;
-                            List<String> unknownTxs = block.getUnknownTransaction(serverNode.getListOfObjects());
-                            if (!unknownTxs.isEmpty()) {
-                                HashMap<String, List<String>> cmds = new HashMap<>();
-                                for (String unknownTx : unknownTxs) {
-                                    List<String> params = new ArrayList<>();
-                                    params.add(unknownTx);
-                                    cmds.put(getobject, params);
-                                }
-                                // TODO: activate
-                                serverNode.getService().execute(new ClientManagerThread(serverNode, serverNode.getService(), sockets, "broadcast", cmds, log));
-                                try {
-                                    Thread.sleep(1000*2 + 500); // wait 2.5 seconds
-                                } catch (Exception e) {
 
-                                }
-                            }
-                        }
+                            // NOTE: missing transactions will be fetched via ServerListener
 
-                        if(!value.verifyObject(serverNode.getListOfObjects())) {
-                            badRequest = true;
-                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
-                            log.warning(clientLogMsg + "- Object-Message could not be verified!");
-                            break;
-                        }
-
-                        key = computeHash(objectMapper.writeValueAsString(value));
-                        if(serverNode.getListOfObjects().containsKey(key)) {
-                            // have the object
-                            continueWithoutResponse = true;
-                            break;
-                        }
-
-                        if (value instanceof Block) {
-                            Block block = (Block) value;
-
-                            try {
-                                boolean UTXOrespected = block.updateAndCheckUTXO(serverNode.getListOfObjects());
-                                if (!UTXOrespected) {
-                                    badRequest = true;
-                                    response = objectMapper.writeValueAsString(new ErrorMessage(error, "Transactions of this block violate the UTXO!"));
-                                    log.warning("Transactions of this block violate the UTXO!");
-                                    break;
-                                }
-                                String utxoWasUpdated =  serverNode.appendToUTXOForNewHash(key, block.getThisUTXO());
-                                if (utxoWasUpdated == null || utxoWasUpdated.equals("")) {
-                                    log.severe("No utxo was updated");
-                                } else {
-                                    log.info(utxoWasUpdated);
-                                }
-                            } catch (Exception e) {
+                            // Pseudo-verify
+                            if(!block.preVerify(serverNode.getListOfObjects())) {
                                 badRequest = true;
-                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Transactions of this block violate the UTXO!"));
-                                log.warning("Transactions of this block violate the UTXO!");
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
+                                log.warning(clientLogMsg + "- Object-Message could not be verified!");
                                 break;
                             }
-                        }
 
-                        HashMap<String, Object> newObjects = new HashMap<>();
-                        newObjects.put(key,value);
-                        String objectsWereUpdated = serverNode.appendToObjects(newObjects);
-                        if (objectsWereUpdated == null) {
-                            log.severe(clientLogMsg + "- ERROR - objects could not be read from file!");
-                        } else if (objectsWereUpdated.equals("")) {
-                            log.info(clientLogMsg + "- No objects were updated");
+                            // store in clientmanager
+                            clientManagerThread.updateBlocks(block);
+
+                            continueWithoutResponse = true;
+
+                        } else if (value instanceof Transaction) {
+                            if(!value.verifyObject(serverNode.getListOfObjects())) {
+                                badRequest = true;
+                                response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
+                                log.warning(clientLogMsg + "- Object-Message could not be verified!");
+                                break;
+                            }
+
+                            key = computeHash(objectMapper.writeValueAsString(value));
+                            if(serverNode.getListOfObjects().containsKey(key)) {
+                                // have the object
+                                continueWithoutResponse = true;
+                                break;
+                            }
+
+                            HashMap<String, Object> newObjects = new HashMap<>();
+                            newObjects.put(key,value);
+                            String objectsWereUpdated = serverNode.appendToObjects(newObjects);
+                            if (objectsWereUpdated == null) {
+                                log.severe(clientLogMsg + "- ERROR - objects could not be read from file!");
+                            } else if (objectsWereUpdated.equals("")) {
+                                log.info(clientLogMsg + "- No transactions were updated");
+                            } else {
+                                log.info(clientLogMsg + "- Transactions were updated : " + objectsWereUpdated);
+                            }
+                            HashMap<String, List<String>> cmds = new HashMap<>();
+                            List<String> params = new ArrayList<>();
+                            params.add(key);
+                            cmds.put(ihaveobject, params);
+                            // TODO: activate
+                            serverNode.getService().execute(new ClientManagerThread(serverNode, serverNode.getService(), sockets, "broadcast", cmds, log));
+                            continueWithoutResponse = true;
+
                         } else {
-                            log.info(clientLogMsg + "- Objects were updated : " + objectsWereUpdated);
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be parsed!"));
+                            log.warning(clientLogMsg + "- Object-Message could not be parsed!");
+                            break;
                         }
-                        HashMap<String, List<String>> cmds = new HashMap<>();
-                        List<String> params = new ArrayList<>();
-                        params.add(key);
-                        cmds.put(ihaveobject, params);
-                        // TODO: activate
-                        serverNode.getService().execute(new ClientManagerThread(serverNode, serverNode.getService(), sockets, "broadcast", cmds, log));
+                        break;
 
+                    case getchaintip:
+                        log.info(clientLogMsg + "- [Case: GETCHAINTIP]");
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning(clientLogMsg + "- Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, GetChaintipMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetChaintip-Message could not be parsed!"));
+                            log.warning(clientLogMsg + "- GetChaintip-Message could not be parsed!");
+                            break;
+                        }
+                        GetChaintipMessage receivedGetChaintip = objectMapper.readValue(request, GetChaintipMessage.class);
+
+                        // chaintip is stored in servernode
+                        ChaintipMessage responseChaintip = new ChaintipMessage(chaintip, serverNode.getChaintip());
+                        response = objectMapper.writeValueAsString(responseChaintip);
+                        break;
+
+                    case chaintip:
+                        // shouldn't occur
                         continueWithoutResponse = true;
                         break;
 
@@ -423,6 +431,12 @@ public class ClientThread extends Thread {
                                     writer.flush();
                                     log.info(clientLogMsg + "- send: " + response);
                                     break;
+                                case getchaintip:
+                                    response = objectMapper.writeValueAsString(new GetChaintipMessage(getchaintip));
+                                    writer.println(response);
+                                    writer.flush();
+                                    log.info(clientLogMsg + "- send: " + response);
+                                    break;
                                 default:
                                     break;
                             }
@@ -450,6 +464,12 @@ public class ClientThread extends Thread {
                                 break;
                             case getobject:
                                 response = objectMapper.writeValueAsString(new GetObjectMessage(getobject, cmd.getValue().get(0)));
+                                writer.println(response);
+                                writer.flush();
+                                log.info(clientLogMsg + "- send: " + response);
+                                break;
+                            case getchaintip:
+                                response = objectMapper.writeValueAsString(new GetChaintipMessage(getchaintip));
                                 writer.println(response);
                                 writer.flush();
                                 log.info(clientLogMsg + "- send: " + response);
