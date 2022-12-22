@@ -77,6 +77,7 @@ public class PeersMessage {
             forbiddenAddresses.add("85.127.44.22");
             forbiddenAddresses.add("88.200.23.239");
             forbiddenAddresses.add("91.141.46.117");
+            forbiddenAddresses.add("37.65.23.103");
 
 
             List<String> duplicatedAddressesWithUnwantedPorts = new ArrayList<>();
@@ -159,6 +160,26 @@ public class PeersMessage {
             duplicatedAddressesWithUnwantedPorts.add("91.118.114.136");
             duplicatedAddressesWithUnwantedPorts.add("92.248.60.17");
             duplicatedAddressesWithUnwantedPorts.add("95.102.49.196");
+            duplicatedAddressesWithUnwantedPorts.add("143.198.112.97");
+            duplicatedAddressesWithUnwantedPorts.add("157.40.64.28");
+            duplicatedAddressesWithUnwantedPorts.add("164.90.161.72");
+            duplicatedAddressesWithUnwantedPorts.add("165.22.85.27");
+            duplicatedAddressesWithUnwantedPorts.add("167.172.107.96");
+            duplicatedAddressesWithUnwantedPorts.add("167.99.130.64");
+            duplicatedAddressesWithUnwantedPorts.add("172.29.0.1");
+            duplicatedAddressesWithUnwantedPorts.add("178.115.70.239");
+            duplicatedAddressesWithUnwantedPorts.add("185.222.241.251");
+            duplicatedAddressesWithUnwantedPorts.add("194.233.171.74");
+            duplicatedAddressesWithUnwantedPorts.add("213.162.73.203");
+            duplicatedAddressesWithUnwantedPorts.add("46.101.113.231");
+            duplicatedAddressesWithUnwantedPorts.add("77.118.49.40");
+            duplicatedAddressesWithUnwantedPorts.add("78.104.120.136");
+            duplicatedAddressesWithUnwantedPorts.add("79.95.87.171");
+            duplicatedAddressesWithUnwantedPorts.add("84.115.220.35");
+            duplicatedAddressesWithUnwantedPorts.add("86.48.7.106");
+            duplicatedAddressesWithUnwantedPorts.add("89.144.202.39");
+
+
 
 
             if (address.equals("")
