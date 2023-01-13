@@ -53,6 +53,8 @@ public class ClientTester {
         // then expect getchaintip
         response = reader.readLine();
         System.out.println("Get chaintip: " + response);
+        response = reader.readLine();
+        System.out.println("Get mempool: " + response);
 
         // expect then a list of peers
         response = reader.readLine();
@@ -248,7 +250,7 @@ public class ClientTester {
 
         // ____________________________________________________________________________________________________________________________________________________
         //                          --- --- ------ --- ---
-        //                          --- ---TASK 3/4--- ---
+        //                          --- ---TASK 3/4/5 --- ---
         //                          --- --- ------ --- ---
         // ____________________________________________________________________________________________________________________________________________________
         // Send genesis
@@ -257,6 +259,13 @@ public class ClientTester {
 //                "\"type\":\"object\"}";
 //        writer.println(request);
 //        writer.flush();
+
+        // Send getMempool
+        request = "{ \"type\" : \"getmempool\" }";
+        writer.println(request);
+        writer.flush();
+        response = reader.readLine();
+        System.out.println("Mempool: " + response);
 //
 //        // Send transaction
 //        System.out.println("send tx");
@@ -266,9 +275,10 @@ public class ClientTester {
 //        writer.println(request);
 //        writer.flush();
 
+
         // send valid block
 //        request = "{\"object\": " +
-//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624220079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000001beecbf3\",\"note\":\"First block after genesis with CBTX and TX spending it\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
+//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624220079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000009d8b60ea\",\"note\":\"First block after genesis with CBTX\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
 //                "\"type\":\"object\"}";
 //        writer.println(request);
 //        writer.flush();
@@ -324,11 +334,11 @@ public class ClientTester {
 
         
         // Send getChaintip and expect chaintip
-        System.out.println("send getchaintip");
-        request = "{\"type\":\"getchaintip\"}";
-        writer.println(request);
-        writer.flush();
-        System.out.println(reader.readLine());
+//        System.out.println("send getchaintip");
+//        request = "{\"type\":\"getchaintip\"}";
+//        writer.println(request);
+//        writer.flush();
+//        System.out.println(reader.readLine());
 
         // Send Chaintip
 //        request = "{\"type\":\"chaintip\",\"blockid\":\"00000002a8986627f379547ed1ec990841e1f1c6ba616a56bfcd4b410280dc6d\"}";
@@ -352,7 +362,7 @@ public class ClientTester {
 //        writer.flush();
 //        System.out.println("send tx");
 //        request = "{\"object\": " +
-//                "{\"inputs\":[{\"outpoint\":{\"index\":0,\"txid\":\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"},\"sig\":\"49cc4f9a1fb9d600a7debc99150e7909274c8c74edd7ca183626dfe49eb4aa21c6ff0e4c5f0dc2a328ad6b8ba10bf7169d5f42993a94bf67e13afa943b749c0b\"}],\"outputs\":[{\"pubkey\":\"c7c2c13afd02be7986dee0f4630df01abdbc950ea379055f1a423a6090f1b2b3\",\"value\":50}],\"type\":\"transaction\"}, " +
+//                "{\"inputs\":[{\"outpoint\":{\"index\":0,\"txid\":\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"},\"sig\":\"49cc4f9a1fb9d600a7debc99150e7909274c8c74edd7ca183626dfe49eb4aa21c6ff0e4c5f0dc2a328ad6b8ba10bf7169d5f42993a94bf67e13afa943b749c0b\"}],\"outputs\":[{\"pubkey\":\"c7c2c13afd02be7986dee0f4630df01abdbc950ea379055f1a423a6090f1b2b3\",\"value\":49}],\"type\":\"transaction\"}, " +
 //                "\"type\":\"object\"}";
 //        writer.println(request);
 //        writer.flush();
@@ -365,31 +375,31 @@ public class ClientTester {
 
         // double_spend1 + double_spend_2
 //        System.out.println("send cbtx");
-//        request = "{\"object\": " +
-//                "{\"height\":1,\"outputs\":[{\"pubkey\":\"f66c7d51551d344b74e071d3b988d2bc09c3ffa82857302620d14f2469cfbf60\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
-//                "\"type\":\"object\"}";
-//        writer.println(request);
-//        writer.flush();
+        request = "{\"object\": " +
+                "{\"height\":1,\"outputs\":[{\"pubkey\":\"f66c7d51551d344b74e071d3b988d2bc09c3ffa82857302620d14f2469cfbf60\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
+                "\"type\":\"object\"}";
+        writer.println(request);
+        writer.flush();
 //        System.out.println("send valid block");
-//        request = "{\"object\": " +
-//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624220079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000009d8b60ea\",\"note\":\"First block after genesis with CBTX\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
-//                "\"type\":\"object\"}";
-//        writer.println(request);
-//        writer.flush();
+        request = "{\"object\": " +
+                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624220079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000009d8b60ea\",\"note\":\"First block after genesis with CBTX\",\"previd\":\"00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e\",\"txids\":[\"2a9458a2e75ed8bd0341b3cb2ab21015bbc13f21ea06229340a7b2b75720c4df\"],\"type\":\"block\"}, " +
+                "\"type\":\"object\"}";
+        writer.println(request);
+        writer.flush();
 
 //        // double_spend_2
 //        System.out.println("send cbtx");
-//        request = "{\"object\": " +
-//                "{\"height\":2,\"outputs\":[{\"pubkey\":\"c7c2c13afd02be7986dee0f4630df01abdbc950ea379055f1a423a6090f1b2b3\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
-//                "\"type\":\"object\"}";
-//        writer.println(request);
-//        writer.flush();
+        request = "{\"object\": " +
+                "{\"height\":2,\"outputs\":[{\"pubkey\":\"c7c2c13afd02be7986dee0f4630df01abdbc950ea379055f1a423a6090f1b2b3\",\"value\":50000000000000}],\"type\":\"transaction\"}, " +
+                "\"type\":\"object\"}";
+        writer.println(request);
+        writer.flush();
 //        System.out.println("send valid block");
-//        request = "{\"object\": " +
-//                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624221079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000004d82fc68\",\"note\":\"Second block after genesis with CBTX\",\"previd\":\"0000000108bdb42de5993bcf5f7d92557585dd6abfe9fb68e796518fe7f2ed2e\",\"txids\":[\"73231cc901774ddb4196ee7e9e6b857b208eea04aee26ced038ac465e1e706d2\"],\"type\":\"block\"}, " +
-//                "\"type\":\"object\"}";
-//        writer.println(request);
-//        writer.flush();
+        request = "{\"object\": " +
+                "{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624221079,\"miner\":\"Snekel testminer\",\"nonce\":\"000000000000000000000000000000000000000000000000000000004d82fc68\",\"note\":\"Second block after genesis with CBTX\",\"previd\":\"0000000108bdb42de5993bcf5f7d92557585dd6abfe9fb68e796518fe7f2ed2e\",\"txids\":[\"73231cc901774ddb4196ee7e9e6b857b208eea04aee26ced038ac465e1e706d2\"],\"type\":\"block\"}, " +
+                "\"type\":\"object\"}";
+        writer.println(request);
+        writer.flush();
 
 
         // double_spend_2 continued (invalid)
@@ -456,7 +466,16 @@ public class ClientTester {
 //        response = reader.readLine(); // expect error object
 //        System.out.println("Object: " + response);
 
-        clientSocket.close();
+        // Send getMempool
+        request = "{ \"type\" : \"getmempool\" }";
+        writer.println(request);
+        writer.flush();
+        response = reader.readLine();
+        System.out.println("Mempool: " + response);
+
+        request = "{ \"type\" : \"getpeers\" }";
+        writer.println(request);
+        writer.flush();
     }
 
     public static void testInvalidRequests(String host, int port) throws Exception {
@@ -517,7 +536,7 @@ public class ClientTester {
         String host = "localhost";
 //        String host = "139.59.159.65";
 //        String host = "128.130.122.101";
-        int port = 18020;
+        int port = 18018;
 
 
         String hash = "";

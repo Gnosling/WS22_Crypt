@@ -1,7 +1,12 @@
 import Entities.Block;
 import Entities.Object;
+import Entities.Transaction;
 import Util.Util;
 import Util.ContainerOfUTXO;
+import Util.TransactionSerializer;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -31,6 +36,9 @@ public class ServerNode {
     private HashMap<String, Object> listOfObjects;
     private String chaintip;
     private long lengthOfLongestChain = -1;
+    private final int maxFetchLimitInMillis = 4400;
+    private List<String> mempoolList = new ArrayList<>();
+    private HashMap<String, List<ContainerOfUTXO>> mempoolUTXO = new HashMap<>();
     private Logger log;
 
     private ExecutorService service;
@@ -85,7 +93,7 @@ public class ServerNode {
 
                 } else if (("info").equals(cmd)) {
                     log.info(" --- INFO --- "
-                        + "\n Server-Address: " + InetAddress.getLocalHost().getHostAddress());
+                            + "\n Server-Address: " + InetAddress.getLocalHost().getHostAddress());
 
                 } else if (("peers").equals(cmd)) {
                     StringBuilder peers = new StringBuilder();
@@ -176,7 +184,9 @@ public class ServerNode {
         return name;
     }
 
-    public String getVersionOfNode() { return versionOfNode; }
+    public String getVersionOfNode() {
+        return versionOfNode;
+    }
 
     public List<String> getListOfDiscoveredPeers() {
         return listOfDiscoveredPeers;
@@ -255,8 +265,7 @@ public class ServerNode {
     }
 
     public synchronized String checkAndUpdateChaintip(Block receivedChaintipBlock) {
-        if (receivedChaintipBlock == null)
-        {
+        if (receivedChaintipBlock == null) {
             return null;
         }
         if (receivedChaintipBlock.getHeight() > lengthOfLongestChain) {
@@ -267,10 +276,259 @@ public class ServerNode {
             } catch (IOException ioException) {
                 return null;
             }
+
+            String mempoolMsg = "";
+
+            if (this.chaintip == null) {
+                this.chaintip = chaintip;
+                mempoolMsg = "chaintip was initialized";
+            }
+
+            // case: extend of longest chain by 1
+            else if (this.chaintip.equals(receivedChaintipBlock.getPrevid())) {
+                this.mempoolUTXO = receivedChaintipBlock.getDeepCopyUTXO();
+
+                for (String txID : receivedChaintipBlock.getTxids()) {
+                    mempoolList.remove(txID);
+                }
+                try {
+                    updateMempool();
+                    mempoolMsg = "mempool was updated";
+                } catch (Exception e) {
+                    mempoolMsg = "error during mempool update";
+                }
+            } else {
+                // case: longest change did reorg
+
+                // take chaintip-block and received chaintip to get last common ancestor
+                Block oldChaintipBlock = (Block) listOfObjects.get(chaintip);
+                Block LCA = null;
+                Block tempOld = oldChaintipBlock;
+                List<Block> oldChain = new ArrayList<>();
+                oldChain.add(oldChaintipBlock);
+                Block tempNew = receivedChaintipBlock;
+                List<Block> newChain = new ArrayList<>();
+                newChain.add(receivedChaintipBlock);
+
+                while (tempOld != null) {
+                    tempOld = (Block) listOfObjects.get(tempOld.getPrevid());
+                    oldChain.add(tempOld);
+                }
+
+                while (tempNew != null) {
+                    tempNew = (Block) listOfObjects.get(tempNew.getPrevid());
+                    newChain.add(tempNew);
+
+                    if (oldChain.contains(tempNew)) {
+                        LCA = tempNew;
+                        break;
+                    }
+                }
+
+                if (LCA == null) {
+                    mempoolMsg = "error - mempool could not be updated";
+                } else {
+
+                    // add tx from old-chain to mempool
+                    List<String> freedTxIDs = new ArrayList<>();
+                    for (int i = oldChain.indexOf(LCA); i >= 0; i--) { // reversed order to add them correct in mempool
+                        List<String> temp = oldChain.get(i).getTxids();
+                        if (temp.isEmpty()) { continue; }
+                        Transaction potentialCB = (Transaction) listOfObjects.get(temp.get(0));
+                        if (potentialCB == null || potentialCB.isCoinbase()) {
+                            temp.remove(0);
+                        }
+                        freedTxIDs.addAll(temp);
+                    }
+                    mempoolList.addAll(freedTxIDs); // no coinbases
+
+                    // from LCA go forward and remove tx from mempool
+                    List<String> removedTxIDs = new ArrayList<>();
+                    for (int i = newChain.indexOf(LCA); i >= 0; i--) {
+                        removedTxIDs.addAll(newChain.get(i).getTxids());
+                    }
+                    mempoolList.removeAll(removedTxIDs);
+
+                    // update mempool on UTXO of the new chaintip
+                    mempoolUTXO = receivedChaintipBlock.getDeepCopyUTXO();
+                    try {
+                        updateMempool();
+                        mempoolMsg = "mempool was updated";
+                    } catch (Exception e) {
+                        mempoolMsg = "error during mempool update";
+                    }
+                }
+            }
+
             this.chaintip = chaintip;
-            return "Chain is longer -> chaintip was updated";
+            return "Chain is longer -> chaintip was updated; " + mempoolMsg;
         } else {
             return "Chain is not longer -> No update";
+        }
+    }
+
+    /**
+     * applies all tx in the mempool to the current mempoolUTXO, in given order.
+     * removes invalid tx from mempool-list and cleansup mempoolUTXO.
+     * must be called after reset of mempoolUTXO.
+     *
+     * @throws Exception
+     */
+    public void updateMempool() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Transaction.class, new TransactionSerializer());
+        objectMapper.registerModule(module);
+        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
+
+        List<String> invalidTxIds = new ArrayList<>();
+        for (String txID : mempoolList) {
+
+            // check that each transaction is using inputs from UTXO
+            // note: first-come first-served of tx
+            Transaction tx = (Transaction) listOfObjects.get(txID);
+
+            // validate tx
+            if (!tx.verifyObject(listOfObjects)) {
+                invalidTxIds.add(txID);
+                continue;
+            }
+
+            if (!tx.isCoinbase()) {
+                // Each input corresponds to unspent entry in the UTXO
+                for (Transaction.Input in : tx.getInputs()) {
+
+                    if (invalidTxIds.contains(txID)) {
+                        continue;
+                    }
+
+                    Transaction.Input.Outpoint elem = in.getOutpoint();
+                    if (!mempoolUTXO.containsKey(elem.getTxid())) {
+                        invalidTxIds.add(txID);
+                        continue;
+                    }
+                    List<ContainerOfUTXO> conList = mempoolUTXO.get(elem.getTxid());
+                    if (conList == null || conList.isEmpty()) {
+                        invalidTxIds.add(txID);
+                        continue;
+                    }
+
+                    for (ContainerOfUTXO con : conList) {
+
+                        if (invalidTxIds.contains(txID)) {
+                            continue;
+                        }
+
+                        if (con.getIndex() != elem.getIndex()) {
+                            continue;
+                        }
+                        if (!con.getIsUnspent()) {
+                            invalidTxIds.remove(txID); // coins were already spent
+                            continue;
+                        }
+                        // update taken UTXO
+                        con.setIsUnspent(false);
+                        break;
+                    }
+                }
+            }
+
+            if (!(invalidTxIds.contains(txID))) {
+                // update mempoolUTXO
+                String newTxHash = computeHash(objectMapper.writeValueAsString(tx));
+                List<ContainerOfUTXO> newConList = new ArrayList<>();
+                for (int i = 0; i < tx.getOutputs().size(); i++) {
+                    newConList.add(new ContainerOfUTXO(i, true));
+                }
+                mempoolUTXO.put(newTxHash, newConList);
+            }
+        }
+
+        // remove invalid tx
+        for (String txID : invalidTxIds) {
+            mempoolList.remove(txID);
+        }
+
+        // clean up mempoolUTXO
+        cleanUpMempoolUTXO();
+    }
+
+    /**
+     * applies this tx in the mempool to the current mempoolUTXO, if possible
+     * removes invalid tx from mempool-list and cleansup mempoolUTXO.
+     *
+     * @param tx transaction to be updated
+     */
+    public synchronized String updateMempoolSingle(Transaction tx, String txID) {
+
+        Block temp = new Block();
+        temp.setUTXO(mempoolUTXO);
+        HashMap<String, List<ContainerOfUTXO>> changedUTXO = temp.getDeepCopyUTXO();
+
+        if (tx == null || tx.isCoinbase() || mempoolList.contains(txID)) {
+            return "warning - no update needed";
+        }
+
+        // Each input corresponds to unspent entry in the UTXO
+        for (Transaction.Input in : tx.getInputs()) {
+
+            Transaction.Input.Outpoint elem = in.getOutpoint();
+            if (!changedUTXO.containsKey(elem.getTxid())) {
+                return "warning - tx is not mempool-valid";
+            }
+            List<ContainerOfUTXO> conList = changedUTXO.get(elem.getTxid());
+            if (conList == null || conList.isEmpty()) {
+                return "warning - tx is not mempool-valid";
+            }
+
+            for (ContainerOfUTXO con : conList) {
+
+                if (con.getIndex() != elem.getIndex()) {
+                    continue;
+                }
+                if (!con.getIsUnspent()) {
+                    return "warning - tx is not mempool-valid"; // coins were already spent
+                }
+                // update taken UTXO
+                con.setIsUnspent(false);
+                break;
+            }
+        }
+
+        // set mempoolUTXO
+        mempoolUTXO = changedUTXO;
+
+        // add to mempoollist
+        mempoolList.add(txID);
+
+        // clean up mempoolUTXO
+        cleanUpMempoolUTXO();
+        return "tx was inserted into mempool";
+    }
+
+    public void cleanUpMempoolUTXO() {
+        List<String> removeKeys = new ArrayList<>();
+        for (Map.Entry<String, List<ContainerOfUTXO>> elem : mempoolUTXO.entrySet()) {
+            if (elem.getValue().isEmpty()) {
+                removeKeys.add(elem.getKey()); // remove if no list exists
+                continue;
+            }
+            List<ContainerOfUTXO> removers = new ArrayList<>();
+            for (ContainerOfUTXO con : elem.getValue()) {
+                if (!con.getIsUnspent()) {
+                    // remove all spent coins
+                    removers.add(con);
+                }
+            }
+            for (ContainerOfUTXO rem : removers) {
+                elem.getValue().remove(rem);
+            }
+            if (elem.getValue().isEmpty()) {
+                removeKeys.add(elem.getKey()); // remove if no list exists
+            }
+        }
+        for (String key : removeKeys) {
+            mempoolUTXO.remove(key);
         }
     }
 
@@ -296,5 +554,17 @@ public class ServerNode {
 
     public long getLengthOfLongestChain() {
         return lengthOfLongestChain;
+    }
+
+    public List<String> getMempoolList() {
+        return mempoolList;
+    }
+
+    public HashMap<String, List<ContainerOfUTXO>> getMempoolUTXO() {
+        return mempoolUTXO;
+    }
+
+    public int getMaxFetchLimitInMillis() {
+        return maxFetchLimitInMillis;
     }
 }

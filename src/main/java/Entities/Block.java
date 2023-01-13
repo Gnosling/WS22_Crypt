@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 import static Util.Util.computeHash;
+import static Util.Util.object;
 
 
 @JsonIgnoreProperties({"UTXO", "genesis"})
@@ -118,8 +119,24 @@ public class Block implements Object {
         if (nonceAsBytes.length != 32) { return false; }
         if (!t.equals("00000002af000000000000000000000000000000000000000000000000000000")) { return false; }
         if (created < 0) { return false; }
-        if (miner != null && miner.length() > 128) { return false; }
-        if (note != null && note.length() > 128) { return false; }
+        if (miner != null) {
+            if (miner.length() > 128) { return false; }
+            char[] minerChars = miner.toCharArray();
+            for (char elem : minerChars) {
+                if ((int) elem < 32 || (int) elem > 126) {
+                    return false;
+                }
+            }
+        }
+        if (note != null) {
+            if (note.length() > 128) { return false; }
+            char[] noteChars = note.toCharArray();
+            for (char elem : noteChars) {
+                if ((int) elem < 32 || (int) elem > 126) {
+                    return false;
+                }
+            }
+        }
 
 
         // check proof-of-work
@@ -246,8 +263,24 @@ public class Block implements Object {
         if (nonceAsBytes.length != 32) { return false; }
         if (!t.equals("00000002af000000000000000000000000000000000000000000000000000000")) { return false; }
         if (created < 0) { return false; }
-        if (miner != null && miner.length() > 128) { return false; }
-        if (note != null && note.length() > 128) { return false; }
+        if (miner != null) {
+            if (miner.length() > 128) { return false; }
+            char[] minerChars = miner.toCharArray();
+            for (char elem : minerChars) {
+                if ((int) elem < 32 || (int) elem > 126) {
+                    return false;
+                }
+            }
+        }
+        if (note != null) {
+            if (note.length() > 128) { return false; }
+            char[] noteChars = note.toCharArray();
+            for (char elem : noteChars) {
+                if ((int) elem < 32 || (int) elem > 126) {
+                    return false;
+                }
+            }
+        }
 
 
         // check proof-of-work

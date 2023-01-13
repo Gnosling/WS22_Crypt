@@ -210,6 +210,15 @@ public class Transaction implements Object {
                 }
             }
 
+            // check no double-spending of same outpoint within tx
+            List<Input.Outpoint> spendOutpoints = new ArrayList<>();
+            for (Input in : this.inputs) {
+                if (spendOutpoints.contains(in.getOutpoint())) {
+                    return false;
+                }
+                spendOutpoints.add(in.getOutpoint());
+            }
+
             // check outpoint
             // check signature
             for (Input in : this.inputs) {

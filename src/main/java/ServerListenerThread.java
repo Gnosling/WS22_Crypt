@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import messages.*;
 
+import java.awt.font.TransformAttribute;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -90,6 +91,13 @@ public class ServerListenerThread extends Thread {
             writer.flush();
             log.info("[first-asked-for-chaintip]: " + response);
 
+            // Fourth send getmempool
+            GetMempoolMessage getMempoolMessage = new GetMempoolMessage(getmempool);
+            response = objectMapper.writeValueAsString(getMempoolMessage);
+            writer.println(response);
+            writer.flush();
+            log.info("[first-asked-for-mempool]: " + response);
+
             response = "";
 
             // read client requests
@@ -133,9 +141,6 @@ public class ServerListenerThread extends Thread {
                     writer.flush();
                     log.warning("Unsupported message type received!");
                     break;
-                } else if (type.equals("getmempool")) {
-                    // other message-types not yet required
-                    continue;
                 }
 
                 boolean badRequest = false;
@@ -295,8 +300,20 @@ public class ServerListenerThread extends Thread {
                         }
                         ObjectMessage objectMessage = objectMapper.readValue(request, ObjectMessage.class);
                         value = objectMessage.getObject();
+
                         if(serverNode.getListOfObjects().containsValue(value)) {
                             // have the object
+                            if (value instanceof Transaction) {
+                                if (!((Transaction) value).isCoinbase()) {
+                                    String mempoolWasUpdated = serverNode.updateMempoolSingle((Transaction) value, key);
+                                    if (mempoolWasUpdated == null) {
+                                        log.severe("ERROR - mempool could not be updated!");
+                                    } else {
+                                        log.info(mempoolWasUpdated);
+                                    }
+                                }
+                            }
+
                             continueWithoutResponse = true;
                             break;
                         }
@@ -320,11 +337,9 @@ public class ServerListenerThread extends Thread {
                                 ClientManagerThread clientManger = new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log);
                                 service.execute(clientManger);
                                 // or while loop for fetching return values of client manager?
-                                try {
-                                    Thread.sleep(1000*1); // wait 1 second
-                                } catch (Exception e) {
-
-                                }
+                                List<String> checks = new ArrayList<>();
+                                checks.add(currentIterationBlock.getPrevid());
+                                delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
 
                                 Object predecessor = null;
                                 List<Block> foundBlocks = clientManger.getFoundBlocks();
@@ -369,9 +384,8 @@ public class ServerListenerThread extends Thread {
                                     }
                                     // TODO: activate
                                     service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
-                                    try {
-                                        Thread.sleep(1000*1); // wait 1 second
-                                    } catch (Exception e) { }
+                                    List<String> checks = unknownTxs;
+                                    delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
                                 }
 
                                 // handle verification
@@ -399,6 +413,14 @@ public class ServerListenerThread extends Thread {
                                     errorDuringRecursivePredecessorChecking = true;
                                     log.warning("Transactions of this block violate the UTXO!");
                                     break;
+                                }
+
+                                // update chaintip
+                                String chaintipWasUpdated = serverNode.checkAndUpdateChaintip(currentPredecessorBlock);
+                                if (chaintipWasUpdated == null) {
+                                    log.severe("ERROR - chaintip could not be updated!");
+                                } else {
+                                    log.info(chaintipWasUpdated);
                                 }
 
                                 // persist predecessor block
@@ -434,11 +456,8 @@ public class ServerListenerThread extends Thread {
                                 }
                                 // TODO: activate
                                 service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
-                                try {
-                                    Thread.sleep(1000*1); // wait 1 second
-                                } catch (Exception e) {
-
-                                }
+                                List<String> checks = unknownTxs;
+                                delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
                             }
                         }
 
@@ -486,6 +505,17 @@ public class ServerListenerThread extends Thread {
                                 log.severe("ERROR - chaintip could not be updated!");
                             } else {
                                 log.info(chaintipWasUpdated);
+                            }
+                        }
+
+                        if (value instanceof Transaction) {
+                            if (!((Transaction) value).isCoinbase()) {
+                                String mempoolWasUpdated = serverNode.updateMempoolSingle((Transaction) value, key);
+                                if (mempoolWasUpdated == null) {
+                                    log.severe("ERROR - mempool could not be updated!");
+                                } else {
+                                    log.info(mempoolWasUpdated);
+                                }
                             }
                         }
 
@@ -556,11 +586,9 @@ public class ServerListenerThread extends Thread {
                             // TODO: activate
                             ClientManagerThread clientManager = new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log);
                             service.execute(clientManager);
-                            try {
-                                Thread.sleep(1000 * 1); // wait 1 second
-                            } catch (Exception e) {
-
-                            }
+                            List<String> checks = new ArrayList<>();
+                            checks.add(receivedChaintip.getBlockid());
+                            delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
 
                             List<Block> foundBlocks = clientManager.getFoundBlocks();
                             for (Block elem : foundBlocks) {
@@ -600,11 +628,9 @@ public class ServerListenerThread extends Thread {
                                 // TODO: activate
                                 ClientManagerThread clientManger = new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log);
                                 service.execute(clientManger);
-                                try {
-                                    Thread.sleep(1000 * 1); // wait 1 second
-                                } catch (Exception e) {
-
-                                }
+                                checks = new ArrayList<>();
+                                checks.add(currentIterationBlock.getPrevid());
+                                delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
 
                                 Object predecessor = null;
                                 foundBlocks = clientManger.getFoundBlocks();
@@ -650,10 +676,8 @@ public class ServerListenerThread extends Thread {
                                     }
                                     // TODO: activate
                                     service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
-                                    try {
-                                        Thread.sleep(1000 * 1); // wait 1 second
-                                    } catch (Exception e) {
-                                    }
+                                    checks = unknownTxs;
+                                    delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
                                 }
 
                                 // handle verification
@@ -681,6 +705,14 @@ public class ServerListenerThread extends Thread {
                                     errorDuringRecursivePredecessorChecking = true;
                                     log.warning("Transactions of this block violate the UTXO!");
                                     break;
+                                }
+
+                                // update chaintip
+                                String chaintipWasUpdated = serverNode.checkAndUpdateChaintip(currentPredecessorBlock);
+                                if (chaintipWasUpdated == null) {
+                                    log.severe("ERROR - chaintip could not be updated!");
+                                } else {
+                                    log.info(chaintipWasUpdated);
                                 }
 
                                 // persist predecessor block
@@ -716,11 +748,8 @@ public class ServerListenerThread extends Thread {
                                 }
                                 // TODO: activate
                                 service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
-                                try {
-                                    Thread.sleep(1000 * 1); // wait 1 second
-                                } catch (Exception e) {
-
-                                }
+                                checks = unknownTxs;
+                                delayTimeAndCheckID(checks, serverNode.getMaxFetchLimitInMillis());
                             }
 
                             if (!block.verifyObject(serverNode.getListOfObjects())) {
@@ -780,6 +809,65 @@ public class ServerListenerThread extends Thread {
                         } else {
                             log.info(chaintipWasUpdated);
                         }
+                        continueWithoutResponse = true;
+                        break;
+
+                    case getmempool:
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, GetMempoolMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "GetMempool-Message could not be parsed!"));
+                            log.warning("GetMempool-Message could not be parsed!");
+                            break;
+                        }
+                        GetMempoolMessage receivedGetMempool = objectMapper.readValue(request, GetMempoolMessage.class);
+
+                        // mempool is stored in servernode
+                        MempoolMessage responseMempool = new MempoolMessage(mempool, serverNode.getMempoolList());
+                        response = objectMapper.writeValueAsString(responseMempool);
+                        break;
+
+                    case mempool:
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, MempoolMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Mempool-Message could not be parsed!"));
+                            log.warning("Mempool-Message could not be parsed!");
+                            break;
+                        }
+                        MempoolMessage receivedMempool = objectMapper.readValue(request, MempoolMessage.class);
+                        List<String> unknownTxs = new ArrayList<>();
+                        for (String txID : receivedMempool.getTxids()) {
+                            if (!serverNode.getListOfObjects().containsKey(txID)) {
+                                unknownTxs.add(txID);
+                            }
+                        }
+
+                        // fetch unknown txs
+                        if (!unknownTxs.isEmpty()) {
+                            cmds = new HashMap<>();
+                            for (String unknownTx : unknownTxs) {
+                                params = new ArrayList<>();
+                                params.add(unknownTx);
+                                cmds.put(getobject, params);
+                            }
+                            // TODO: activate
+                            service.execute(new ClientManagerThread(serverNode, service, sockets, "broadcast", cmds, log));
+                            try { Thread.sleep(250); // wait 0.25 seconds
+                            } catch (Exception e) { }
+                        }
+
+                        // txs will be stored in object-case (client-thread)
                         continueWithoutResponse = true;
                         break;
 
@@ -848,6 +936,24 @@ public class ServerListenerThread extends Thread {
                     // Ignored because we cannot handle it
                 }
             }
+        }
+    }
+
+    private void delayTimeAndCheckID(List<String> ids, int limitInMillis) {
+        int sleept = 0;
+        while (sleept < limitInMillis) {
+
+            boolean missing = false;
+            for (String id : ids) {
+                if (!serverNode.getListOfObjects().containsKey(id)) {
+                    missing = true;
+                }
+            }
+
+            if (!missing) { break; }
+
+            try { Thread.sleep(500); sleept += 500; // wait 0.500 seconds
+            } catch (Exception e) { }
         }
     }
 }

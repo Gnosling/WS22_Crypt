@@ -134,9 +134,6 @@ public class ClientThread extends Thread {
                     writer.flush();
                     log.warning(clientLogMsg + "- unsupported message type received!");
                     break;
-                } else if (type.equals("getmempool")) {
-                    // other message-types not yet required
-                    continue;
                 }
 
                 boolean badRequest = false;
@@ -298,6 +295,18 @@ public class ClientThread extends Thread {
                         }
                         ObjectMessage objectMessage = objectMapper.readValue(request, ObjectMessage.class);
                         value = objectMessage.getObject();
+
+                        if (value instanceof Transaction) {
+                            if (!((Transaction) value).isCoinbase()) {
+                                String mempoolWasUpdated = serverNode.updateMempoolSingle((Transaction) value, key);
+                                if (mempoolWasUpdated == null) {
+                                    log.severe("ERROR - mempool could not be updated!");
+                                } else {
+                                    log.info(mempoolWasUpdated);
+                                }
+                            }
+                        }
+
                         if(serverNode.getListOfObjects().containsValue(value)) {
                             // have the object
                             continueWithoutResponse = true;
@@ -328,6 +337,15 @@ public class ClientThread extends Thread {
                                 response = objectMapper.writeValueAsString(new ErrorMessage(error, "Object-Message could not be verified!"));
                                 log.warning(clientLogMsg + "- Object-Message could not be verified!");
                                 break;
+                            }
+
+                            if (!((Transaction) value).isCoinbase()) {
+                                String mempoolWasUpdated = serverNode.updateMempoolSingle((Transaction) value, key);
+                                if (mempoolWasUpdated == null) {
+                                    log.severe("ERROR - mempool could not be updated!");
+                                } else {
+                                    log.info(mempoolWasUpdated);
+                                }
                             }
 
                             key = computeHash(objectMapper.writeValueAsString(value));
@@ -386,6 +404,46 @@ public class ClientThread extends Thread {
 
                     case chaintip:
                         // shouldn't occur
+                        continueWithoutResponse = true;
+                        break;
+
+                    case getmempool:
+                        // shouldn't occur
+                        continueWithoutResponse = true;
+                        break;
+
+                    case mempool:
+                        if (!wasGreeted) {
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Unexpected message; 'hello' was expected!"));
+                            log.warning("Unexpected message; 'hello' was expected!");
+                            badRequest = true;
+                            break;
+                        }
+                        if (!isParsableInJson(objectMapper, request, MempoolMessage.class)) {
+                            badRequest = true;
+                            response = objectMapper.writeValueAsString(new ErrorMessage(error, "Mempool-Message could not be parsed!"));
+                            log.warning("Mempool-Message could not be parsed!");
+                            break;
+                        }
+                        MempoolMessage receivedMempool = objectMapper.readValue(request, MempoolMessage.class);
+                        List<String> unknownTxs = new ArrayList<>();
+                        for (String txID : receivedMempool.getTxids()) {
+                            if (!serverNode.getListOfObjects().containsKey(txID)) {
+                                unknownTxs.add(txID);
+                            }
+                        }
+
+                        // fetch unknown txs
+                        if (!unknownTxs.isEmpty()) {
+                            for (String unknownTx : unknownTxs) {
+                                response = objectMapper.writeValueAsString(new GetObjectMessage(getobject, unknownTx));
+                                log.info(clientLogMsg + "[responded-get]: " + response);
+                                writer.println(response);
+                                writer.flush();
+                            }
+                        }
+
+                        // txs will be stored in object-case (client-thread)
                         continueWithoutResponse = true;
                         break;
 

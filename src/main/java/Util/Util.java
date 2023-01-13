@@ -26,6 +26,8 @@ public class Util {
     public static final String object = "object";
     public static final String getchaintip = "getchaintip";
     public static final String chaintip = "chaintip";
+    public static final String getmempool = "getmempool";
+    public static final String mempool = "mempool";
 
     public static final String hashIdOfGenesisBlock = "00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e";
 
