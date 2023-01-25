@@ -305,6 +305,7 @@ public class ServerListenerThread extends Thread {
                             // have the object
                             if (value instanceof Transaction) {
                                 if (!((Transaction) value).isCoinbase()) {
+                                    key = computeHash(objectMapper.writeValueAsString((Transaction) value));
                                     String mempoolWasUpdated = serverNode.updateMempoolSingle((Transaction) value, key);
                                     if (mempoolWasUpdated == null) {
                                         log.severe("ERROR - mempool could not be updated!");
@@ -510,6 +511,7 @@ public class ServerListenerThread extends Thread {
 
                         if (value instanceof Transaction) {
                             if (!((Transaction) value).isCoinbase()) {
+                                key = computeHash(objectMapper.writeValueAsString((Transaction) value));
                                 String mempoolWasUpdated = serverNode.updateMempoolSingle((Transaction) value, key);
                                 if (mempoolWasUpdated == null) {
                                     log.severe("ERROR - mempool could not be updated!");

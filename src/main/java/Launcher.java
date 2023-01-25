@@ -24,6 +24,10 @@ public class Launcher {
         String versionOfNode = "2.5";
         List<String> listOfDiscoveredPeers = Util.readPeersOfPersistentFile(fileNameOfStoredPeers);
         HashMap<String,Object> listOfObjects = Util.readObjectsOfPersistentFile(fileNameOfStoredObjects, fileNameOfStoredUTXOs);
+        if (!listOfObjects.containsKey(Util.hashIdOfGenesisBlock)) {
+            Util.insertGenesisOnPersistentFile(fileNameOfStoredObjects);
+            listOfObjects = Util.readObjectsOfPersistentFile(fileNameOfStoredObjects, fileNameOfStoredUTXOs);
+        }
 
         Security.addProvider(new BouncyCastleProvider());
 

@@ -144,6 +144,23 @@ public class Util {
         }
     }
 
+    public static boolean insertGenesisOnPersistentFile(String fileName) {
+        String genesis = "00000000a420b7cefa2b7730243316921ed59ffe836e111ca3801f82a4f5360e~{\"T\":\"00000002af000000000000000000000000000000000000000000000000000000\",\"created\":1624219079,\"miner\":\"dionyziz\",\"nonce\":\"0000000000000000000000000000000000000000000000000000002634878840\",\"note\":\"The Economist 2021-06-20: Crypto-miners are probably to blame for the graphics-chip shortage\",\"previd\":null,\"txids\":[],\"type\":\"block\"}";
+        BufferedWriter writer = null;
+        try {
+            writer = new BufferedWriter(new FileWriter(fileName, true));
+            // put key and value separated
+            writer.write(genesis);
+            // new line
+            writer.newLine();
+            writer.close();
+            return true;
+
+        } catch (IOException exception) {
+            return false;
+        }
+    }
+
     public static boolean appendObjectsOnPersistentFile(HashMap<String, Object> objects, String fileName) {
         BufferedWriter writer = null;
         try {

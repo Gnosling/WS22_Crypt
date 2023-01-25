@@ -59,6 +59,9 @@ public class ServerNode {
 
     public void launch() {
         log.info("launching ...");
+        // set chaintip to genesis
+        chaintip = hashIdOfGenesisBlock;
+
         service = Executors.newFixedThreadPool(150);
 
         try {
@@ -282,6 +285,7 @@ public class ServerNode {
             if (this.chaintip == null) {
                 this.chaintip = chaintip;
                 mempoolMsg = "chaintip was initialized";
+                this.mempoolUTXO = receivedChaintipBlock.getDeepCopyUTXO();
             }
 
             // case: extend of longest chain by 1
@@ -301,7 +305,7 @@ public class ServerNode {
                 // case: longest change did reorg
 
                 // take chaintip-block and received chaintip to get last common ancestor
-                Block oldChaintipBlock = (Block) listOfObjects.get(chaintip);
+                Block oldChaintipBlock = (Block) listOfObjects.get(this.chaintip);
                 Block LCA = null;
                 Block tempOld = oldChaintipBlock;
                 List<Block> oldChain = new ArrayList<>();
@@ -413,6 +417,7 @@ public class ServerNode {
                         continue;
                     }
 
+                    boolean correctIndexExists = false;
                     for (ContainerOfUTXO con : conList) {
 
                         if (invalidTxIds.contains(txID)) {
@@ -423,12 +428,16 @@ public class ServerNode {
                             continue;
                         }
                         if (!con.getIsUnspent()) {
-                            invalidTxIds.remove(txID); // coins were already spent
+                            invalidTxIds.add(txID); // coins were already spent
                             continue;
                         }
                         // update taken UTXO
                         con.setIsUnspent(false);
+                        correctIndexExists = true;
                         break;
+                    }
+                    if (!correctIndexExists) {
+                        invalidTxIds.add(txID);
                     }
                 }
             }
@@ -481,6 +490,7 @@ public class ServerNode {
                 return "warning - tx is not mempool-valid";
             }
 
+            boolean correctIndexExists = false;
             for (ContainerOfUTXO con : conList) {
 
                 if (con.getIndex() != elem.getIndex()) {
@@ -491,7 +501,11 @@ public class ServerNode {
                 }
                 // update taken UTXO
                 con.setIsUnspent(false);
+                correctIndexExists = true;
                 break;
+            }
+            if (!correctIndexExists) {
+                return "warning - tx is not mempool-valid";
             }
         }
 
